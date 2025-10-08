@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Option Trading Analytics - AI-Powered Investment Insights</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .gradient-text {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white">
+    <!-- Navigation -->
+    <nav class="fixed w-full z-50 bg-gray-900/95 backdrop-blur-sm border-b border-gray-800">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <a href="/" class="flex items-center space-x-2 hover:opacity-80 transition">
+                    <i class="fas fa-chart-line text-3xl gradient-text"></i>
+                    <span class="text-xl font-bold">OptionAnalytics</span>
+                </a>
+                <div class="flex items-center space-x-4">
+                    <a href="/login" class="px-4 py-2 text-gray-300 hover:text-white transition">Login</a>
+                    <a href="/signup" class="px-6 py-2 gradient-bg rounded-lg font-semibold hover:shadow-lg transition">Sign Up</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <div class="pt-32 pb-20 px-4">
+        <div class="max-w-7xl mx-auto text-center">
+            <h1 class="text-5xl md:text-7xl font-bold mb-6">
+                Smart Option Trading<br/>
+                <span class="gradient-text">Powered by AI</span>
+            </h1>
+            <p class="text-xl md:text-2xl text-gray-400 mb-10 max-w-3xl mx-auto">
+                Analyze covered calls & cash-secured puts with intrinsic value calculations.
+                Make smarter investment decisions backed by data.
+            </p>
+            <div class="flex justify-center space-x-4">
+                <a href="/signup" class="px-8 py-4 gradient-bg rounded-lg font-semibold text-lg hover:shadow-2xl transition transform hover:scale-105">
+                    Get Started Free
+                </a>
+                <a href="#features" class="px-8 py-4 bg-gray-800 rounded-lg font-semibold text-lg hover:bg-gray-700 transition">
+                    Learn More
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Features Section -->
+    <div id="features" class="py-20 px-4 bg-gray-800/50">
+        <div class="max-w-7xl mx-auto">
+            <h2 class="text-4xl font-bold text-center mb-16">Powerful Features</h2>
+            <div class="grid md:grid-cols-3 gap-8">
+                <!-- Feature 1 -->
+                <div class="bg-gray-900 p-8 rounded-xl border border-gray-700 hover:border-purple-500 transition">
+                    <div class="w-16 h-16 gradient-bg rounded-lg flex items-center justify-center mb-4">
+                        <i class="fas fa-calculator text-2xl"></i>
+                    </div>
+                    <h3 class="text-2xl font-bold mb-3">3 Intrinsic Value Models</h3>
+                    <p class="text-gray-400">Graham Number, DCF Analysis, and Peter Lynch Fair Value calculations for comprehensive stock valuation.</p>
+                </div>
+
+                <!-- Feature 2 -->
+                <div class="bg-gray-900 p-8 rounded-xl border border-gray-700 hover:border-purple-500 transition">
+                    <div class="w-16 h-16 gradient-bg rounded-lg flex items-center justify-center mb-4">
+                        <i class="fas fa-chart-bar text-2xl"></i>
+                    </div>
+                    <h3 class="text-2xl font-bold mb-3">Real-Time Option Data</h3>
+                    <p class="text-gray-400">Live option chains with premium calculations for covered calls and cash-secured puts.</p>
+                </div>
+
+                <!-- Feature 3 -->
+                <div class="bg-gray-900 p-8 rounded-xl border border-gray-700 hover:border-purple-500 transition">
+                    <div class="w-16 h-16 gradient-bg rounded-lg flex items-center justify-center mb-4">
+                        <i class="fas fa-download text-2xl"></i>
+                    </div>
+                    <h3 class="text-2xl font-bold mb-3">Export & Analyze</h3>
+                    <p class="text-gray-400">Download detailed CSV reports with all metrics for further analysis in Excel or your favorite tool.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pricing Section -->
+    <div class="py-20 px-4">
+        <div class="max-w-7xl mx-auto">
+            <h2 class="text-4xl font-bold text-center mb-16">Simple Pricing</h2>
+            <div class="grid md:grid-cols-3 gap-8">
+                <!-- Free Plan -->
+                <div class="bg-gray-800 p-8 rounded-xl border border-gray-700">
+                    <h3 class="text-2xl font-bold mb-2">Free</h3>
+                    <div class="text-4xl font-bold mb-4">$0<span class="text-lg text-gray-400">/month</span></div>
+                    <ul class="space-y-3 mb-8">
+                        <li class="flex items-center"><i class="fas fa-check text-green-500 mr-2"></i> 5 stocks per analysis</li>
+                        <li class="flex items-center"><i class="fas fa-check text-green-500 mr-2"></i> Basic metrics</li>
+                        <li class="flex items-center"><i class="fas fa-check text-green-500 mr-2"></i> CSV export</li>
+                    </ul>
+                    <a href="/signup" class="block w-full py-3 bg-gray-700 rounded-lg text-center font-semibold hover:bg-gray-600 transition">Get Started</a>
+                </div>
+
+                <!-- Pro Plan -->
+                <div class="bg-gradient-to-br from-purple-600 to-blue-600 p-8 rounded-xl transform scale-105 shadow-2xl">
+                    <div class="bg-white text-purple-600 px-3 py-1 rounded-full inline-block mb-2 text-sm font-bold">POPULAR</div>
+                    <h3 class="text-2xl font-bold mb-2">Pro</h3>
+                    <div class="text-4xl font-bold mb-4">$29<span class="text-lg">/month</span></div>
+                    <ul class="space-y-3 mb-8">
+                        <li class="flex items-center"><i class="fas fa-check mr-2"></i> Unlimited stocks</li>
+                        <li class="flex items-center"><i class="fas fa-check mr-2"></i> All valuation models</li>
+                        <li class="flex items-center"><i class="fas fa-check mr-2"></i> Real-time data</li>
+                        <li class="flex items-center"><i class="fas fa-check mr-2"></i> Priority support</li>
+                    </ul>
+                    <a href="/signup" class="block w-full py-3 bg-white text-purple-600 rounded-lg text-center font-bold hover:bg-gray-100 transition">Start Free Trial</a>
+                </div>
+
+                <!-- Enterprise Plan -->
+                <div class="bg-gray-800 p-8 rounded-xl border border-gray-700">
+                    <h3 class="text-2xl font-bold mb-2">Enterprise</h3>
+                    <div class="text-4xl font-bold mb-4">Custom</div>
+                    <ul class="space-y-3 mb-8">
+                        <li class="flex items-center"><i class="fas fa-check text-green-500 mr-2"></i> Everything in Pro</li>
+                        <li class="flex items-center"><i class="fas fa-check text-green-500 mr-2"></i> API access</li>
+                        <li class="flex items-center"><i class="fas fa-check text-green-500 mr-2"></i> Custom integrations</li>
+                        <li class="flex items-center"><i class="fas fa-check text-green-500 mr-2"></i> Dedicated support</li>
+                    </ul>
+                    <a href="mailto:sales@optionanalytics.com" class="block w-full py-3 bg-gray-700 rounded-lg text-center font-semibold hover:bg-gray-600 transition">Contact Sales</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800/50 border-t border-gray-700 py-12 px-4">
+        <div class="max-w-7xl mx-auto text-center text-gray-400">
+            <p>&copy; 2025 OptionAnalytics. All rights reserved.</p>
+            <div class="mt-4 space-x-6">
+                <a href="#" class="hover:text-white transition">Privacy Policy</a>
+                <a href="#" class="hover:text-white transition">Terms of Service</a>
+                <a href="#" class="hover:text-white transition">Contact</a>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>

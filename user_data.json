@@ -1,0 +1,12 @@
+{
+  "demo@example.com": {
+    "password": "d3ad9315b7be5dd53b31a273b3b3aba5defe700808305aa16a3062b76658a791",
+    "name": "Demo User",
+    "plan": "free"
+  },
+  "mai.elnagdy@gmail.com": {
+    "password": "12dc70774fb96bfc3e8349b6880dc80d9ac34f91096fc64b0ff25c5c1d8bb451",
+    "name": "mai",
+    "plan": "pro"
+  }
+}

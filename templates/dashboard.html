@@ -1,0 +1,1422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - OptionAnalytics</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .stock-chip {
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: scale(0.8); }
+            to { opacity: 1; transform: scale(1); }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white">
+    <!-- Navigation -->
+    <nav class="bg-gray-800 border-b border-gray-700">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center space-x-8">
+                    <a href="/" class="flex items-center space-x-2 hover:opacity-80 transition">
+                        <i class="fas fa-chart-line text-2xl text-purple-500"></i>
+                        <span class="text-xl font-bold">OptionAnalytics</span>
+                    </a>
+                    <div class="hidden md:flex space-x-4">
+                        <a href="/dashboard" class="px-3 py-2 rounded-lg bg-gray-700 text-white font-medium">
+                            <i class="fas fa-home mr-2"></i>Dashboard
+                        </a>
+                        <a href="/profile" class="px-3 py-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition">
+                            <i class="fas fa-user mr-2"></i>Profile
+                        </a>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span class="text-gray-400 hidden md:block">{{ user.name }}</span>
+                    <span class="px-3 py-1 bg-purple-500/20 text-purple-300 rounded-full text-sm font-semibold capitalize">
+                        {{ user.plan }}
+                    </span>
+                    <a href="/logout" class="px-4 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition">
+                        <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-4xl font-bold mb-2">Option Analysis Dashboard</h1>
+            <p class="text-gray-400">Analyze covered calls and cash-secured puts with intrinsic value calculations</p>
+        </div>
+
+        <!-- Stock Selector Card -->
+        <div class="bg-gray-800 rounded-xl p-6 border border-gray-700 mb-6">
+            <h2 class="text-2xl font-bold mb-4"><i class="fas fa-search mr-2 text-purple-500"></i>Select Stocks</h2>
+            
+            <!-- Stock Input with Autocomplete -->
+            <div class="flex space-x-2 mb-4 relative">
+                <div class="flex-1 relative">
+                    <input 
+                        type="text" 
+                        id="stockInput"
+                        class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition"
+                        placeholder="Enter stock symbol (e.g., AAPL, NVDA, TSLA...)"
+                        onkeyup="showAutocomplete(event)"
+                        onkeypress="if(event.key === 'Enter') addStock()"
+                        autocomplete="off"
+                    >
+                    <!-- Autocomplete dropdown -->
+                    <div id="autocompleteList" class="hidden absolute z-10 w-full bg-gray-700 border border-gray-600 rounded-lg mt-1 max-h-60 overflow-y-auto shadow-xl">
+                        <!-- Suggestions will appear here -->
+                    </div>
+                </div>
+                <button 
+                    onclick="addStock()"
+                    class="px-6 py-3 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold transition"
+                >
+                    <i class="fas fa-plus mr-2"></i>Add
+                </button>
+                <button 
+                    onclick="clearAllStocks()"
+                    class="px-6 py-3 bg-red-600 hover:bg-red-700 rounded-lg font-semibold transition"
+                >
+                    <i class="fas fa-times mr-2"></i>Clear All
+                </button>
+            </div>
+
+            <!-- Selected Stocks -->
+            <div id="stockList" class="flex flex-wrap gap-2 mb-4 min-h-[40px]">
+                <!-- Stocks will appear here -->
+            </div>
+
+            <!-- Analyze Button -->
+            <button 
+                onclick="runAnalysis()"
+                id="analyzeBtn"
+                class="w-full gradient-bg py-3 rounded-lg font-semibold text-base hover:shadow-xl transition transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled
+            >
+                <i class="fas fa-rocket mr-2"></i>Run Analysis
+            </button>
+        </div>
+
+        <!-- Loading Spinner -->
+        <div id="loadingSpinner" class="hidden text-center py-12">
+            <div class="inline-block animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-purple-500"></div>
+            <p class="text-xl mt-4 text-gray-400">Analyzing options...</p>
+        </div>
+
+        <!-- Results Section -->
+        <div id="resultsSection" class="hidden">
+            <!-- Error/Warning Section -->
+            <div id="errorSection" class="hidden mb-6 bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4">
+                <div class="flex items-start space-x-3">
+                    <i class="fas fa-exclamation-triangle text-yellow-500 text-xl mt-1"></i>
+                    <div class="flex-1">
+                        <h3 class="text-yellow-500 font-semibold mb-2">Some stocks failed to analyze</h3>
+                        <div id="errorList" class="space-y-1 text-sm text-gray-300">
+                            <!-- Errors will be inserted here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats Cards -->
+            <div class="grid md:grid-cols-4 gap-4 mb-6">
+                <div class="bg-gray-800 rounded-xl p-6 border border-gray-700">
+                    <div class="text-gray-400 text-sm mb-1">Total Opportunities</div>
+                    <div class="text-3xl font-bold" id="totalCount">-</div>
+                </div>
+                <div class="bg-gray-800 rounded-xl p-6 border border-gray-700">
+                    <div class="text-gray-400 text-sm mb-1">Avg Call Return</div>
+                    <div class="text-3xl font-bold text-green-400" id="avgCallReturn">-</div>
+                </div>
+                <div class="bg-gray-800 rounded-xl p-6 border border-gray-700">
+                    <div class="text-gray-400 text-sm mb-1">Avg Put Return</div>
+                    <div class="text-3xl font-bold text-blue-400" id="avgPutReturn">-</div>
+                </div>
+                <div class="bg-gray-800 rounded-xl p-6 border border-gray-700">
+                    <div class="text-gray-400 text-sm mb-1">Best Opportunity</div>
+                    <div class="text-3xl font-bold text-purple-400" id="bestOpportunity">-</div>
+                </div>
+            </div>
+
+            <!-- Filters & Sort -->
+            <div id="filterSection" class="hidden bg-gray-800 rounded-xl border border-gray-700 p-6 mb-6">
+                <div class="flex flex-wrap gap-4 items-center">
+                    <div class="flex-1 min-w-[200px]">
+                        <label class="block text-sm text-gray-400 mb-2">Search Results</label>
+                        <input 
+                            type="text" 
+                            id="searchFilter"
+                            placeholder="Search by symbol..."
+                            oninput="applyFilters()"
+                            class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
+                        >
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-2">Strategy</label>
+                        <select 
+                            id="strategyFilter"
+                            onchange="applyFilters()"
+                            class="px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
+                        >
+                            <option value="all">All Strategies</option>
+                            <option value="Covered Call">Covered Calls</option>
+                            <option value="Cash-Secured Put">Cash-Secured Puts</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-2">Min Return %</label>
+                        <input 
+                            type="number" 
+                            id="minReturnFilter"
+                            placeholder="0"
+                            step="0.1"
+                            oninput="applyFilters()"
+                            class="w-24 px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
+                        >
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-2">Max IV %</label>
+                        <input 
+                            type="number" 
+                            id="maxIVFilter"
+                            placeholder="100"
+                            step="1"
+                            oninput="applyFilters()"
+                            class="w-24 px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
+                        >
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-2">&nbsp;</label>
+                        <button 
+                            onclick="clearFilters()"
+                            class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition"
+                        >
+                            <i class="fas fa-times mr-2"></i>Clear
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Table -->
+            <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                <div class="p-6 border-b border-gray-700 flex justify-between items-center flex-wrap gap-4">
+                    <h2 class="text-2xl font-bold"><i class="fas fa-table mr-2 text-purple-500"></i>Analysis Results</h2>
+                    <div class="flex gap-2">
+                        <button 
+                            onclick="toggleFilters()"
+                            class="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold transition"
+                        >
+                            <i class="fas fa-filter mr-2"></i>Filters
+                        </button>
+                    <button 
+                        onclick="downloadCSV()"
+                        class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-semibold transition"
+                    >
+                            <i class="fas fa-download mr-2"></i>Export CSV
+                    </button>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full" id="resultsTable">
+                        <thead class="bg-gray-700">
+                            <tr>
+                                <th class="px-6 py-3 text-left font-semibold cursor-pointer hover:bg-gray-600 transition" onclick="sortTable('symbol')">
+                                    Symbol <i class="fas fa-sort text-gray-500 text-xs ml-1"></i>
+                                </th>
+                                <th class="px-6 py-3 text-left font-semibold cursor-pointer hover:bg-gray-600 transition" onclick="sortTable('strategy')">
+                                    Strategy <i class="fas fa-sort text-gray-500 text-xs ml-1"></i>
+                                </th>
+                                <th class="px-6 py-3 text-right font-semibold cursor-pointer hover:bg-gray-600 transition" onclick="sortTable('current_price')">
+                                    Current Price <i class="fas fa-sort text-gray-500 text-xs ml-1"></i>
+                                </th>
+                                <th class="px-6 py-3 text-right font-semibold cursor-pointer hover:bg-gray-600 transition" onclick="sortTable('strike_price')">
+                                    Strike <i class="fas fa-sort text-gray-500 text-xs ml-1"></i>
+                                </th>
+                                <th class="px-6 py-3 text-right font-semibold cursor-pointer hover:bg-gray-600 transition" onclick="sortTable('premium_total')">
+                                    Premium <i class="fas fa-sort text-gray-500 text-xs ml-1"></i>
+                                </th>
+                                <th class="px-6 py-3 text-right font-semibold cursor-pointer hover:bg-gray-600 transition" onclick="sortTable('return_percentage')">
+                                    Return % <i class="fas fa-sort text-gray-500 text-xs ml-1"></i>
+                                </th>
+                                <th class="px-6 py-3 text-right font-semibold cursor-pointer hover:bg-gray-600 transition" onclick="sortTable('implied_volatility')">
+                                    IV% <i class="fas fa-sort text-gray-500 text-xs ml-1"></i>
+                                </th>
+                                <th class="px-6 py-3 text-right font-semibold cursor-pointer hover:bg-gray-600 transition" onclick="sortTable('lynch_fair_value')">
+                                    Intrinsic Value <i class="fas fa-sort text-gray-500 text-xs ml-1"></i>
+                                </th>
+                                <th class="px-6 py-3 text-right font-semibold cursor-pointer hover:bg-gray-600 transition" onclick="sortTable('dcf_intrinsic_value')">
+                                    DCF Value <i class="fas fa-sort text-gray-500 text-xs ml-1"></i>
+                                </th>
+                                <th class="px-6 py-3 text-right font-semibold cursor-pointer hover:bg-gray-600 transition" onclick="sortTable('analyst_target')">
+                                    Wall St Target <i class="fas fa-sort text-gray-500 text-xs ml-1"></i>
+                                </th>
+                                <th class="px-6 py-3 text-center font-semibold cursor-pointer hover:bg-gray-600 transition" onclick="sortTable('relative_value_pct')">
+                                    Relative Value <i class="fas fa-sort text-gray-500 text-xs ml-1"></i>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="resultsBody">
+                            <!-- Results will be inserted here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Professional Footer -->
+    <footer class="bg-gray-800 border-t border-gray-700 mt-12">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div class="grid md:grid-cols-4 gap-8">
+                <!-- Brand -->
+                <div>
+                    <div class="flex items-center space-x-2 mb-4">
+                        <i class="fas fa-chart-line text-2xl text-purple-500"></i>
+                        <span class="text-xl font-bold">OptionAnalytics</span>
+                    </div>
+                    <p class="text-gray-400 text-sm">
+                        Professional options analysis platform with intrinsic value calculations.
+                    </p>
+                </div>
+
+                <!-- Quick Links -->
+                <div>
+                    <h3 class="font-semibold mb-4">Quick Links</h3>
+                    <ul class="space-y-2 text-sm">
+                        <li><a href="/dashboard" class="text-gray-400 hover:text-purple-400 transition">Dashboard</a></li>
+                        <li><a href="/profile" class="text-gray-400 hover:text-purple-400 transition">Profile</a></li>
+                        <li><a href="#" onclick="showHelp(); return false;" class="text-gray-400 hover:text-purple-400 transition">Help & FAQ</a></li>
+                        <li><a href="#" onclick="showKeyboardShortcuts(); return false;" class="text-gray-400 hover:text-purple-400 transition">Keyboard Shortcuts</a></li>
+                    </ul>
+                </div>
+
+                <!-- Resources -->
+                <div>
+                    <h3 class="font-semibold mb-4">Resources</h3>
+                    <ul class="space-y-2 text-sm">
+                        <li><a href="https://www.investopedia.com/terms/o/option.asp" target="_blank" class="text-gray-400 hover:text-purple-400 transition">Learn Options Trading</a></li>
+                        <li><a href="https://www.investopedia.com/terms/i/intrinsicvalue.asp" target="_blank" class="text-gray-400 hover:text-purple-400 transition">Intrinsic Value Guide</a></li>
+                        <li><a href="https://finance.yahoo.com" target="_blank" class="text-gray-400 hover:text-purple-400 transition">Market Data (Yahoo)</a></li>
+                        <li><a href="#" onclick="showDisclaimer(); return false;" class="text-gray-400 hover:text-purple-400 transition">Disclaimer</a></li>
+                    </ul>
+                </div>
+
+                <!-- Contact -->
+                <div>
+                    <h3 class="font-semibold mb-4">Contact</h3>
+                    <ul class="space-y-2 text-sm text-gray-400">
+                        <li><i class="fas fa-envelope mr-2"></i>support@optionanalytics.com</li>
+                        <li><i class="fas fa-globe mr-2"></i>optionanalytics.com</li>
+                        <li class="pt-2 flex space-x-3">
+                            <a href="#" class="text-gray-400 hover:text-purple-400 transition"><i class="fab fa-twitter text-lg"></i></a>
+                            <a href="#" class="text-gray-400 hover:text-purple-400 transition"><i class="fab fa-linkedin text-lg"></i></a>
+                            <a href="#" class="text-gray-400 hover:text-purple-400 transition"><i class="fab fa-github text-lg"></i></a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="border-t border-gray-700 mt-8 pt-8 text-center text-sm text-gray-400">
+                <p>&copy; 2025 OptionAnalytics. All rights reserved. | 
+                    <a href="#" onclick="showDisclaimer(); return false;" class="hover:text-purple-400 transition">Disclaimer</a> | 
+                    <a href="#" onclick="showPrivacyPolicy(); return false;" class="hover:text-purple-400 transition">Privacy Policy</a>
+                </p>
+                <p class="mt-2 text-xs">Not investment advice. Options trading involves risk. Please consult a financial advisor.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        const DEFAULT_STOCKS = ['NVDA', 'MSFT', 'GOOG', 'MU', 'LLY', 'RDDT', 'SMCI', 'MSTR', 'TSLA', 'AVGO', 'NVO', 'XOM', 'MARA', 'COIN', 'AMZN', 'AMD', 'NNE', 'AAPL', 'ASTS', 'ORCL'];
+        let sortColumn = null;
+        let sortDirection = 'asc';
+        let filteredData = [];
+
+        const POPULAR_STOCKS = [
+            {symbol: 'AAPL', name: 'Apple Inc.'},
+            {symbol: 'MSFT', name: 'Microsoft Corporation'},
+            {symbol: 'NVDA', name: 'NVIDIA Corporation'},
+            {symbol: 'GOOG', name: 'Alphabet Inc.'},
+            {symbol: 'GOOGL', name: 'Alphabet Inc. Class A'},
+            {symbol: 'AMZN', name: 'Amazon.com Inc.'},
+            {symbol: 'TSLA', name: 'Tesla Inc.'},
+            {symbol: 'META', name: 'Meta Platforms Inc.'},
+            {symbol: 'AMD', name: 'Advanced Micro Devices'},
+            {symbol: 'NFLX', name: 'Netflix Inc.'},
+            {symbol: 'COIN', name: 'Coinbase Global Inc.'},
+            {symbol: 'RDDT', name: 'Reddit Inc.'},
+            {symbol: 'AVGO', name: 'Broadcom Inc.'},
+            {symbol: 'ORCL', name: 'Oracle Corporation'},
+            {symbol: 'MSTR', name: 'MicroStrategy Inc.'},
+            {symbol: 'MARA', name: 'Marathon Digital Holdings'},
+            {symbol: 'LLY', name: 'Eli Lilly and Company'},
+            {symbol: 'XOM', name: 'Exxon Mobil Corporation'},
+            {symbol: 'CVX', name: 'Chevron Corporation'},
+            {symbol: 'JPM', name: 'JPMorgan Chase & Co.'},
+            {symbol: 'BAC', name: 'Bank of America Corp'},
+            {symbol: 'WFC', name: 'Wells Fargo & Company'},
+            {symbol: 'GS', name: 'Goldman Sachs Group Inc.'},
+            {symbol: 'MS', name: 'Morgan Stanley'},
+            {symbol: 'WMT', name: 'Walmart Inc.'},
+            {symbol: 'V', name: 'Visa Inc.'},
+            {symbol: 'MA', name: 'Mastercard Inc.'},
+            {symbol: 'DIS', name: 'The Walt Disney Company'},
+            {symbol: 'NKE', name: 'Nike Inc.'},
+            {symbol: 'PYPL', name: 'PayPal Holdings Inc.'},
+            {symbol: 'INTC', name: 'Intel Corporation'},
+            {symbol: 'CRM', name: 'Salesforce Inc.'},
+            {symbol: 'CSCO', name: 'Cisco Systems Inc.'},
+            {symbol: 'PEP', name: 'PepsiCo Inc.'},
+            {symbol: 'KO', name: 'The Coca-Cola Company'},
+            {symbol: 'SMCI', name: 'Super Micro Computer'},
+            {symbol: 'MU', name: 'Micron Technology Inc.'},
+            {symbol: 'ASTS', name: 'AST SpaceMobile Inc.'},
+            {symbol: 'NNE', name: 'Nano Nuclear Energy'},
+            {symbol: 'NVO', name: 'Novo Nordisk'},
+            {symbol: 'PLTR', name: 'Palantir Technologies'},
+            {symbol: 'SOFI', name: 'SoFi Technologies'},
+            {symbol: 'RBLX', name: 'Roblox Corporation'},
+            {symbol: 'RIVN', name: 'Rivian Automotive'},
+            {symbol: 'LCID', name: 'Lucid Group Inc.'},
+            {symbol: 'UBER', name: 'Uber Technologies'},
+            {symbol: 'LYFT', name: 'Lyft Inc.'},
+            {symbol: 'ABNB', name: 'Airbnb Inc.'},
+            {symbol: 'SNOW', name: 'Snowflake Inc.'},
+            {symbol: 'DDOG', name: 'Datadog Inc.'},
+            {symbol: 'NET', name: 'Cloudflare Inc.'},
+            {symbol: 'SHOP', name: 'Shopify Inc.'},
+            {symbol: 'SQ', name: 'Block Inc.'},
+            {symbol: 'ROKU', name: 'Roku Inc.'},
+            {symbol: 'ZM', name: 'Zoom Video Communications'},
+            {symbol: 'DOCU', name: 'DocuSign Inc.'},
+            {symbol: 'CRWD', name: 'CrowdStrike Holdings'},
+            {symbol: 'PANW', name: 'Palo Alto Networks'},
+            {symbol: 'ADBE', name: 'Adobe Inc.'},
+            {symbol: 'NOW', name: 'ServiceNow Inc.'},
+            {symbol: 'INTU', name: 'Intuit Inc.'},
+            {symbol: 'QCOM', name: 'Qualcomm Inc.'},
+            {symbol: 'TXN', name: 'Texas Instruments'},
+            {symbol: 'AMAT', name: 'Applied Materials'},
+            {symbol: 'LRCX', name: 'Lam Research'},
+            {symbol: 'KLAC', name: 'KLA Corporation'},
+            {symbol: 'ASML', name: 'ASML Holding'},
+            {symbol: 'TSM', name: 'Taiwan Semiconductor'},
+            {symbol: 'ARM', name: 'Arm Holdings'},
+            {symbol: 'IONQ', name: 'IonQ Inc.'},
+            {symbol: 'RIOT', name: 'Riot Platforms'},
+            {symbol: 'CLSK', name: 'CleanSpark Inc.'},
+            {symbol: 'HUT', name: 'Hut 8 Mining'},
+            {symbol: 'BITF', name: 'Bitfarms Ltd.'},
+            {symbol: 'HOOD', name: 'Robinhood Markets'},
+            {symbol: 'F', name: 'Ford Motor Company'},
+            {symbol: 'GM', name: 'General Motors'},
+            {symbol: 'AAL', name: 'American Airlines'},
+            {symbol: 'DAL', name: 'Delta Air Lines'},
+            {symbol: 'UAL', name: 'United Airlines'},
+            {symbol: 'CCL', name: 'Carnival Corporation'},
+            {symbol: 'NCLH', name: 'Norwegian Cruise Line'},
+            {symbol: 'BA', name: 'Boeing Company'},
+            {symbol: 'LMT', name: 'Lockheed Martin'},
+            {symbol: 'RTX', name: 'RTX Corporation'},
+            {symbol: 'CAT', name: 'Caterpillar Inc.'},
+            {symbol: 'DE', name: 'Deere & Company'},
+            {symbol: 'HD', name: 'Home Depot'},
+            {symbol: 'LOW', name: "Lowe's Companies"},
+            {symbol: 'TGT', name: 'Target Corporation'},
+            {symbol: 'COST', name: 'Costco Wholesale'},
+            {symbol: 'SBUX', name: 'Starbucks Corporation'},
+            {symbol: 'MCD', name: "McDonald's Corporation"},
+            {symbol: 'CMG', name: 'Chipotle Mexican Grill'},
+            {symbol: 'YUM', name: 'Yum! Brands'},
+            {symbol: 'BABA', name: 'Alibaba Group'},
+            {symbol: 'JD', name: 'JD.com Inc.'},
+            {symbol: 'PDD', name: 'PDD Holdings'},
+            {symbol: 'BIDU', name: 'Baidu Inc.'},
+            {symbol: 'NIO', name: 'NIO Inc.'},
+            {symbol: 'XPEV', name: 'XPeng Inc.'},
+            {symbol: 'LI', name: 'Li Auto Inc.'},
+            {symbol: 'PFE', name: 'Pfizer Inc.'},
+            {symbol: 'JNJ', name: 'Johnson & Johnson'},
+            {symbol: 'ABBV', name: 'AbbVie Inc.'},
+            {symbol: 'MRK', name: 'Merck & Co.'},
+            {symbol: 'BMY', name: 'Bristol Myers Squibb'},
+            {symbol: 'GILD', name: 'Gilead Sciences'},
+            {symbol: 'AMGN', name: 'Amgen Inc.'},
+            {symbol: 'BIIB', name: 'Biogen Inc.'},
+            {symbol: 'REGN', name: 'Regeneron Pharmaceuticals'},
+            {symbol: 'VRTX', name: 'Vertex Pharmaceuticals'},
+            {symbol: 'SPY', name: 'SPDR S&P 500 ETF'},
+            {symbol: 'QQQ', name: 'Invesco QQQ Trust'},
+            {symbol: 'IWM', name: 'iShares Russell 2000'},
+            {symbol: 'DIA', name: 'SPDR Dow Jones Industrial'},
+            {symbol: 'VXX', name: 'iPath Series B S&P 500 VIX'},
+            {symbol: 'GLD', name: 'SPDR Gold Trust'},
+            {symbol: 'SLV', name: 'iShares Silver Trust'},
+            {symbol: 'USO', name: 'United States Oil Fund'},
+            {symbol: 'TLT', name: 'iShares 20+ Year Treasury'},
+            {symbol: 'HYG', name: 'iShares iBoxx High Yield'},
+        ];
+        let selectedStocks = [];
+        let analysisData = null;
+
+        function showAutocomplete(event) {
+            const input = document.getElementById('stockInput');
+            const list = document.getElementById('autocompleteList');
+            const query = input.value.trim().toUpperCase();
+            
+            if (query.length === 0) {
+                list.classList.add('hidden');
+                return;
+            }
+            
+            const matches = POPULAR_STOCKS.filter(stock => 
+                stock.symbol.startsWith(query) || stock.name.toUpperCase().includes(query)
+            ).slice(0, 10);
+            
+            if (matches.length === 0) {
+                list.classList.add('hidden');
+                return;
+            }
+            
+            list.innerHTML = matches.map(stock => `
+                <div onclick="selectStock('${stock.symbol}')" class="px-4 py-3 hover:bg-gray-600 cursor-pointer transition flex justify-between items-center">
+                    <div>
+                        <span class="font-bold text-purple-400">${stock.symbol}</span>
+                        <span class="text-gray-400 text-sm ml-2">${stock.name}</span>
+                    </div>
+                    <i class="fas fa-plus text-gray-500"></i>
+                </div>
+            `).join('');
+            
+            list.classList.remove('hidden');
+        }
+        
+        function selectStock(symbol) {
+            document.getElementById('stockInput').value = symbol;
+            document.getElementById('autocompleteList').classList.add('hidden');
+            addStock();
+        }
+        
+        // Close autocomplete when clicking outside
+        document.addEventListener('click', function(event) {
+            const input = document.getElementById('stockInput');
+            const list = document.getElementById('autocompleteList');
+            if (!input.contains(event.target) && !list.contains(event.target)) {
+                list.classList.add('hidden');
+            }
+        });
+
+        function addStock() {
+            const input = document.getElementById('stockInput');
+            const symbol = input.value.trim().toUpperCase();
+            
+            if (symbol && !selectedStocks.includes(symbol)) {
+                selectedStocks.push(symbol);
+                updateStockList();
+                input.value = '';
+            }
+        }
+
+        function removeStock(symbol) {
+            selectedStocks = selectedStocks.filter(s => s !== symbol);
+            updateStockList();
+        }
+
+        function loadDefaultStocks() {
+            selectedStocks = [...DEFAULT_STOCKS];
+            updateStockList();
+        }
+
+        function clearAllStocks() {
+            console.log('Clear All clicked - before:', selectedStocks);
+            selectedStocks = [];
+            console.log('Clear All clicked - after:', selectedStocks);
+            updateStockList();
+            showToast('All stocks cleared', 'info');
+        }
+
+        function updateStockList() {
+            const container = document.getElementById('stockList');
+            const analyzeBtn = document.getElementById('analyzeBtn');
+            
+            if (selectedStocks.length === 0) {
+                container.innerHTML = '<div class="text-gray-500 py-2">No stocks selected</div>';
+                analyzeBtn.disabled = true;
+            } else {
+                container.innerHTML = selectedStocks.map(symbol => `
+                    <div class="stock-chip bg-purple-600 px-4 py-2 rounded-lg flex items-center space-x-2">
+                        <span class="font-semibold">${symbol}</span>
+                        <button onclick="removeStock('${symbol}')" class="text-purple-200 hover:text-white">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                `).join('');
+                analyzeBtn.disabled = false;
+            }
+        }
+
+        async function runAnalysis() {
+            document.getElementById('loadingSpinner').classList.remove('hidden');
+            document.getElementById('resultsSection').classList.add('hidden');
+
+            try {
+                const response = await fetch('/api/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbols: selectedStocks }),
+                    signal: AbortSignal.timeout(120000) // 2 minute timeout
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.text();
+                    throw new Error(`Server error: ${response.status} - ${errorData}`);
+                }
+                
+                const responseData = await response.json();
+                
+                // Handle new response format with results and errors
+                const results = responseData.results || responseData || [];
+                const errors = responseData.errors || {};
+                
+                if (!results || results.length === 0) {
+                    if (Object.keys(errors).length > 0) {
+                        // Show errors if all stocks failed
+                        document.getElementById('resultsSection').classList.remove('hidden');
+                        displayErrors(errors);
+                        document.getElementById('loadingSpinner').classList.add('hidden');
+                        showToast('❌ All stocks failed to analyze. Check error details below.', 'error');
+                        return;
+                    }
+                    showToast('❌ No option data available. Market may be closed or stocks have no options.', 'error');
+                    return;
+                }
+                
+                displayResults(results, errors);
+            } catch (error) {
+                console.error('Analysis error:', error);
+                let errorMsg = error.message;
+                if (error.name === 'TimeoutError') {
+                    errorMsg = '⏱️ Analysis timed out. Try with fewer stocks or try again later.';
+                } else if (error.message.includes('Failed to fetch')) {
+                    errorMsg = '🌐 Network error. Make sure the server is running and try again.';
+                } else {
+                    errorMsg = '❌ ' + errorMsg;
+                }
+                showToast(errorMsg, 'error');
+            } finally {
+                document.getElementById('loadingSpinner').classList.add('hidden');
+            }
+        }
+
+
+        function displayResults(data, errors = {}) {
+            analysisData = data;
+            filteredData = [...data];
+            
+            // Display errors if any
+            if (Object.keys(errors).length > 0) {
+                displayErrors(errors);
+            } else {
+                document.getElementById('errorSection').classList.add('hidden');
+            }
+            
+            updateStatsAndTable(filteredData);
+            document.getElementById('resultsSection').classList.remove('hidden');
+            
+            const errorCount = Object.keys(errors).length;
+            const successMsg = data.length + ' opportunities found';
+            const fullMsg = errorCount > 0 
+                ? successMsg + `, ${errorCount} stock(s) failed` 
+                : successMsg;
+            showToast('Analysis complete! ' + fullMsg, errorCount > 0 ? 'warning' : 'success');
+        }
+
+        function displayErrors(errors) {
+            const errorSection = document.getElementById('errorSection');
+            const errorList = document.getElementById('errorList');
+            
+            // Clear previous errors
+            errorList.innerHTML = '';
+            
+            // Add each error
+            for (const [symbol, errorMsg] of Object.entries(errors)) {
+                const errorItem = document.createElement('div');
+                errorItem.className = 'flex items-start space-x-2';
+                errorItem.innerHTML = `
+                    <span class="font-semibold text-purple-400">${symbol}:</span>
+                    <span class="text-gray-300">${errorMsg}</span>
+                `;
+                errorList.appendChild(errorItem);
+            }
+            
+            // Show the error section
+            errorSection.classList.remove('hidden');
+        }
+
+        function updateStatsAndTable(data) {
+            const tbody = document.getElementById('resultsBody');
+            
+            // Calculate stats
+            const totalCount = data.length;
+            const calls = data.filter(d => d.strategy === 'Covered Call');
+            const puts = data.filter(d => d.strategy === 'Cash-Secured Put');
+            const avgCallReturn = calls.length > 0 ? (calls.reduce((sum, d) => sum + d.return_percentage, 0) / calls.length).toFixed(2) : '0.00';
+            const avgPutReturn = puts.length > 0 ? (puts.reduce((sum, d) => sum + d.return_percentage, 0) / puts.length).toFixed(2) : '0.00';
+            const best = data.length > 0 ? data.reduce((max, d) => d.return_percentage > max.return_percentage ? d : max, data[0]) : null;
+
+            // Update stats
+            document.getElementById('totalCount').textContent = totalCount;
+            document.getElementById('avgCallReturn').textContent = avgCallReturn + '%';
+            document.getElementById('avgPutReturn').textContent = avgPutReturn + '%';
+            document.getElementById('bestOpportunity').textContent = best ? best.symbol : '-';
+
+            // Populate table
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="10" class="px-6 py-8 text-center text-gray-400">No results match your filters</td></tr>';
+            } else {
+            tbody.innerHTML = data.map(row => {
+                return `
+                <tr class="border-t border-gray-700 hover:bg-gray-750 transition">
+                    <td class="px-6 py-4 font-bold text-purple-400">${row.symbol}</td>
+                    <td class="px-6 py-4">
+                        <span class="px-2 py-1 rounded text-xs font-semibold ${row.strategy === 'Covered Call' ? 'bg-green-500/20 text-green-400' : 'bg-blue-500/20 text-blue-400'}">
+                            ${row.strategy}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 text-right">$${row.current_price.toFixed(2)}</td>
+                    <td class="px-6 py-4 text-right">$${row.strike_price.toFixed(2)}</td>
+                    <td class="px-6 py-4 text-right text-green-400">$${row.premium_total.toFixed(2)}</td>
+                    <td class="px-6 py-4 text-right font-bold text-purple-400">${row.return_percentage.toFixed(2)}%</td>
+                    <td class="px-6 py-4 text-right font-semibold ${row.implied_volatility > 0.5 ? 'text-red-400' : row.implied_volatility > 0.3 ? 'text-yellow-400' : 'text-green-400'}">${(row.implied_volatility * 100).toFixed(1)}%</td>
+                    <td class="px-6 py-4 text-right">
+                        ${row.lynch_fair_value ? `
+                            <div class="flex flex-col items-end gap-1">
+                                <span class="text-gray-200 font-semibold">$${row.lynch_fair_value.toFixed(2)}</span>
+                                <span class="px-2 py-0.5 rounded-full text-xs font-medium ${row.relative_value_pct < 0 ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}">
+                                    ${row.relative_value_pct < 0 ? '↓' : '↑'} ${Math.abs(row.relative_value_pct).toFixed(0)}%
+                                </span>
+                            </div>
+                        ` : '<span class="text-gray-400">N/A</span>'}
+                    </td>
+                    <td class="px-6 py-4 text-right">
+                        ${row.dcf_intrinsic_value ? `
+                            <div class="flex flex-col items-end gap-1">
+                                <span class="text-gray-200 font-semibold">$${row.dcf_intrinsic_value.toFixed(2)}</span>
+                                <span class="px-2 py-0.5 rounded-full text-xs font-medium ${((row.current_price - row.dcf_intrinsic_value) / row.dcf_intrinsic_value * 100) < 0 ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}">
+                                    ${((row.current_price - row.dcf_intrinsic_value) / row.dcf_intrinsic_value * 100) < 0 ? '↓' : '↑'} ${Math.abs((row.current_price - row.dcf_intrinsic_value) / row.dcf_intrinsic_value * 100).toFixed(0)}%
+                                </span>
+                            </div>
+                        ` : '<span class="text-gray-400">N/A</span>'}
+                    </td>
+                    <td class="px-6 py-4 text-right">
+                        ${row.analyst_target ? `
+                            <div class="flex flex-col items-end gap-1">
+                                <span class="${row.current_price < row.analyst_target ? 'text-green-400' : 'text-gray-200'} font-semibold">$${row.analyst_target.toFixed(2)}</span>
+                                <span class="px-2 py-0.5 rounded-full text-xs font-medium ${((row.current_price - row.analyst_target) / row.analyst_target * 100) < 0 ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}">
+                                    ${((row.current_price - row.analyst_target) / row.analyst_target * 100) < 0 ? '↑' : '↓'} ${Math.abs((row.current_price - row.analyst_target) / row.analyst_target * 100).toFixed(0)}%
+                                </span>
+                            </div>
+                        ` : '<span class="text-gray-400">N/A</span>'}
+                    </td>
+                    <td class="px-6 py-4 text-center">
+                        ${row.relative_value_pct !== null && row.relative_value_pct !== undefined && row.lynch_fair_value ? `
+                            <div class="flex flex-col items-center gap-1">
+                                <span class="font-semibold text-gray-200">
+                                    $${Math.abs(row.current_price - row.lynch_fair_value).toFixed(2)}
+                                </span>
+                                <span class="px-3 py-1 rounded-full text-xs font-medium ${row.relative_value_pct < 0 ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}">
+                                    ${row.relative_value_pct < 0 ? '↓ ' : '↑ '}${Math.abs(row.relative_value_pct).toFixed(0)}%
+                                </span>
+                            </div>
+                        ` : '<span class="text-gray-400">N/A</span>'}
+                    </td>
+                </tr>
+                `;
+            }).join('');
+            }
+        }
+
+        // Toast Notification System
+        function showToast(message, type = 'info') {
+            const toastContainer = document.getElementById('toastContainer') || createToastContainer();
+            
+            const toast = document.createElement('div');
+            toast.className = `toast-notification ${type} transform translate-x-full`;
+            
+            const icons = {
+                success: 'fa-check-circle',
+                error: 'fa-exclamation-circle',
+                warning: 'fa-exclamation-triangle',
+                info: 'fa-info-circle'
+            };
+            
+            const colors = {
+                success: 'bg-green-600',
+                error: 'bg-red-600',
+                warning: 'bg-yellow-600',
+                info: 'bg-blue-600'
+            };
+            
+            toast.innerHTML = `
+                <div class="${colors[type]} text-white px-6 py-4 rounded-lg shadow-2xl flex items-center space-x-3 min-w-[300px]">
+                    <i class="fas ${icons[type]} text-xl"></i>
+                    <span class="flex-1">${message}</span>
+                    <button onclick="this.parentElement.parentElement.remove()" class="text-white/80 hover:text-white">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            `;
+            
+            toastContainer.appendChild(toast);
+            
+            // Animate in
+            setTimeout(() => toast.classList.remove('translate-x-full'), 10);
+            
+            // Auto remove after 5 seconds
+            setTimeout(() => {
+                toast.classList.add('translate-x-full');
+                setTimeout(() => toast.remove(), 300);
+            }, 5000);
+        }
+
+        function createToastContainer() {
+            const container = document.createElement('div');
+            container.id = 'toastContainer';
+            container.className = 'fixed top-4 right-4 z-50 space-y-2';
+            container.style.cssText = 'max-width: 400px;';
+            document.body.appendChild(container);
+            
+            const style = document.createElement('style');
+            style.textContent = `
+                .toast-notification {
+                    transition: transform 0.3s ease-out;
+                }
+            `;
+            document.head.appendChild(style);
+            
+            return container;
+        }
+
+        // Sorting functionality
+        function sortTable(column) {
+            if (sortColumn === column) {
+                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortColumn = column;
+                sortDirection = 'asc';
+            }
+            
+            filteredData.sort((a, b) => {
+                let aVal = a[column];
+                let bVal = b[column];
+                
+                // Handle null values
+                if (aVal === null || aVal === undefined) return 1;
+                if (bVal === null || bVal === undefined) return -1;
+                
+                // Compare
+                if (typeof aVal === 'string') {
+                    return sortDirection === 'asc' 
+                        ? aVal.localeCompare(bVal)
+                        : bVal.localeCompare(aVal);
+                } else {
+                    return sortDirection === 'asc' 
+                        ? aVal - bVal
+                        : bVal - aVal;
+                }
+            });
+            
+            updateStatsAndTable(filteredData);
+            showToast(`Sorted by ${column} (${sortDirection})`, 'info');
+        }
+
+        // Filtering functionality
+        function toggleFilters() {
+            const filterSection = document.getElementById('filterSection');
+            filterSection.classList.toggle('hidden');
+        }
+
+        function applyFilters() {
+            const searchTerm = document.getElementById('searchFilter')?.value.toUpperCase() || '';
+            const strategy = document.getElementById('strategyFilter')?.value || 'all';
+            const minReturn = parseFloat(document.getElementById('minReturnFilter')?.value) || 0;
+            const maxIV = parseFloat(document.getElementById('maxIVFilter')?.value) || 100;
+            
+            filteredData = analysisData.filter(row => {
+                const matchesSearch = row.symbol.toUpperCase().includes(searchTerm);
+                const matchesStrategy = strategy === 'all' || row.strategy === strategy;
+                const matchesReturn = row.return_percentage >= minReturn;
+                const matchesIV = (row.implied_volatility * 100) <= maxIV;
+                
+                return matchesSearch && matchesStrategy && matchesReturn && matchesIV;
+            });
+            
+            updateStatsAndTable(filteredData);
+        }
+
+        function clearFilters() {
+            document.getElementById('searchFilter').value = '';
+            document.getElementById('strategyFilter').value = 'all';
+            document.getElementById('minReturnFilter').value = '';
+            document.getElementById('maxIVFilter').value = '';
+            
+            filteredData = [...analysisData];
+            updateStatsAndTable(filteredData);
+            showToast('Filters cleared', 'info');
+        }
+
+        function downloadCSV() {
+            if (!analysisData) return;
+
+            const headers = Object.keys(analysisData[0]);
+            const csvContent = [
+                headers.join(','),
+                ...analysisData.map(row => headers.map(h => row[h]).join(','))
+            ].join('\\n');
+
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `option_analysis_${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+            showToast('CSV downloaded successfully!', 'success');
+        }
+
+        // Help & Information Modals
+        function showHelp() {
+            const modal = createModal('Help & FAQ', `
+                <div class="space-y-6">
+                    <div>
+                        <h3 class="font-bold text-lg mb-2">How to use this platform?</h3>
+                        <ol class="list-decimal list-inside space-y-2 text-gray-300">
+                            <li>Enter stock symbols or use autocomplete</li>
+                            <li>Click "Add" or press Enter to add stocks</li>
+                            <li>Click "Run Analysis" to analyze options</li>
+                            <li>View results in the table below</li>
+                            <li>Use filters to refine results</li>
+                            <li>Export to CSV for further analysis</li>
+                        </ol>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-lg mb-2">What are the strategies?</h3>
+                        <p class="text-gray-300 mb-2"><strong>Covered Call:</strong> Sell call options on stocks you own to generate income.</p>
+                        <p class="text-gray-300"><strong>Cash-Secured Put:</strong> Sell put options while holding cash to potentially buy stock at a discount.</p>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-lg mb-2">What are the valuation metrics?</h3>
+                        <p class="text-gray-300 mb-2"><strong>Intrinsic Value:</strong> Blended fair value using multiple methods (DCF 50%, Graham 25%, P/E 25%)</p>
+                        <p class="text-gray-300 mb-2"><strong>DCF Value:</strong> Conservative discounted cash flow valuation with risk-adjusted discount rates</p>
+                        <p class="text-gray-300 mb-2"><strong>Wall St Target:</strong> Average analyst price target (shows green if undervalued vs. analyst consensus)</p>
+                        <p class="text-gray-300"><strong>Relative Value:</strong> Shows if the stock is undervalued (green) or overvalued (red) compared to intrinsic value, with the percentage difference</p>
+                    </div>
+                </div>
+            `);
+        }
+
+        function showKeyboardShortcuts() {
+            const modal = createModal('Keyboard Shortcuts', `
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-300">Add stock</span>
+                        <kbd class="px-2 py-1 bg-gray-700 rounded text-sm">Enter</kbd>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-300">Run analysis</span>
+                        <kbd class="px-2 py-1 bg-gray-700 rounded text-sm">Ctrl + Enter</kbd>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-300">Toggle filters</span>
+                        <kbd class="px-2 py-1 bg-gray-700 rounded text-sm">Ctrl + F</kbd>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-300">Download CSV</span>
+                        <kbd class="px-2 py-1 bg-gray-700 rounded text-sm">Ctrl + D</kbd>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-300">Show help</span>
+                        <kbd class="px-2 py-1 bg-gray-700 rounded text-sm">?</kbd>
+                    </div>
+                </div>
+            `);
+        }
+
+        function showDisclaimer() {
+            const modal = createModal('Disclaimer', `
+                <div class="space-y-4 text-gray-300">
+                    <p><strong>Investment Disclaimer:</strong> This platform is for educational and informational purposes only. It is not investment advice.</p>
+                    <p>Options trading involves substantial risk and is not suitable for all investors. You could lose more than your initial investment.</p>
+                    <p>Past performance does not guarantee future results. All data is provided "as is" without warranty of any kind.</p>
+                    <p><strong>Always consult with a qualified financial advisor before making investment decisions.</strong></p>
+                    <p class="text-sm text-gray-400 mt-4">Data provided by Yahoo Finance. Calculations are estimates and may not reflect actual market conditions.</p>
+                </div>
+            `);
+        }
+
+        function showPrivacyPolicy() {
+            const modal = createModal('Privacy Policy', `
+                <div class="space-y-4 text-gray-300">
+                    <p><strong>Data Collection:</strong> We collect minimal user information necessary for account management and service provision.</p>
+                    <p><strong>Usage Data:</strong> We may collect analytics data to improve our service, but we do not sell personal information to third parties.</p>
+                    <p><strong>Security:</strong> Your data is encrypted and stored securely. Passwords are hashed using industry-standard algorithms.</p>
+                    <p><strong>Cookies:</strong> We use essential cookies for authentication and session management.</p>
+                    <p><strong>Your Rights:</strong> You can request data deletion or export at any time from your profile page.</p>
+                </div>
+            `);
+        }
+
+        function createModal(title, content) {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4';
+            modal.innerHTML = `
+                <div class="bg-gray-800 rounded-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto border border-gray-700">
+                    <div class="sticky top-0 bg-gray-800 border-b border-gray-700 p-6 flex justify-between items-center">
+                        <h2 class="text-2xl font-bold">${title}</h2>
+                        <button onclick="this.closest('.fixed').remove()" class="text-gray-400 hover:text-white">
+                            <i class="fas fa-times text-2xl"></i>
+                        </button>
+                    </div>
+                    <div class="p-6">
+                        ${content}
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+            return modal;
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 'Enter') {
+                e.preventDefault();
+                const analyzeBtn = document.getElementById('analyzeBtn');
+                if (!analyzeBtn.disabled) runAnalysis();
+            }
+            if (e.ctrlKey && e.key === 'f') {
+                e.preventDefault();
+                toggleFilters();
+            }
+            if (e.ctrlKey && e.key === 'd') {
+                e.preventDefault();
+                downloadCSV();
+            }
+            if (e.key === '?' && !e.target.matches('input, textarea')) {
+                e.preventDefault();
+                showHelp();
+            }
+        });
+
+        function loadDefaultStocks() {
+            selectedStocks = [...DEFAULT_STOCKS];
+            updateStockList();
+        }
+
+        function clearAllStocks() {
+            console.log('Clear All clicked - before:', selectedStocks);
+            selectedStocks = [];
+            console.log('Clear All clicked - after:', selectedStocks);
+            updateStockList();
+            showToast('All stocks cleared', 'info');
+        }
+
+
+
+        function updateStockList() {
+
+            const container = document.getElementById('stockList');
+
+            const analyzeBtn = document.getElementById('analyzeBtn');
+
+            
+
+            if (selectedStocks.length === 0) {
+
+                container.innerHTML = '<div class="text-gray-500 py-2">No stocks selected</div>';
+
+                analyzeBtn.disabled = true;
+
+            } else {
+
+                container.innerHTML = selectedStocks.map(symbol => `
+
+                    <div class="stock-chip bg-purple-600 px-4 py-2 rounded-lg flex items-center space-x-2">
+
+                        <span class="font-semibold">${symbol}</span>
+
+                        <button onclick="removeStock('${symbol}')" class="text-purple-200 hover:text-white">
+
+                            <i class="fas fa-times"></i>
+
+                        </button>
+
+                    </div>
+
+                `).join('');
+
+                analyzeBtn.disabled = false;
+
+            }
+
+        }
+
+
+
+        async function runAnalysis() {
+
+            document.getElementById('loadingSpinner').classList.remove('hidden');
+
+            document.getElementById('resultsSection').classList.add('hidden');
+
+
+
+            try {
+
+                const response = await fetch('/api/analyze', {
+
+                    method: 'POST',
+
+                    headers: { 'Content-Type': 'application/json' },
+
+                    body: JSON.stringify({ symbols: selectedStocks }),
+
+                    signal: AbortSignal.timeout(120000) // 2 minute timeout
+
+                });
+
+
+
+                if (!response.ok) {
+
+                    const errorData = await response.text();
+
+                    throw new Error(`Server error: ${response.status} - ${errorData}`);
+
+                }
+
+                
+
+                const responseData = await response.json();
+
+                
+
+                // Handle new response format with results and errors
+                const results = responseData.results || responseData || [];
+                const errors = responseData.errors || {};
+                
+                if (!results || results.length === 0) {
+                    if (Object.keys(errors).length > 0) {
+                        // Show errors if all stocks failed
+                        document.getElementById('resultsSection').classList.remove('hidden');
+                        displayErrors(errors);
+                        document.getElementById('loadingSpinner').classList.add('hidden');
+                        showToast('❌ All stocks failed to analyze. Check error details below.', 'error');
+                        return;
+                    }
+                    showToast('❌ No option data available. Market may be closed or stocks have no options.', 'error');
+                    return;
+                }
+                
+                displayResults(results, errors);
+
+            } catch (error) {
+
+                console.error('Analysis error:', error);
+
+                let errorMsg = error.message;
+
+                if (error.name === 'TimeoutError') {
+
+                    errorMsg = '⏱️ Analysis timed out. Try with fewer stocks or try again later.';
+
+                } else if (error.message.includes('Failed to fetch')) {
+
+                    errorMsg = '🌐 Network error. Make sure the server is running and try again.';
+
+                } else {
+
+                    errorMsg = '❌ ' + errorMsg;
+
+                }
+
+                showToast(errorMsg, 'error');
+
+            } finally {
+
+                document.getElementById('loadingSpinner').classList.add('hidden');
+
+            }
+
+        }
+
+
+
+
+        function displayResults(data, errors = {}) {
+            analysisData = data;
+            filteredData = [...data];
+            
+            // Display errors if any
+            if (Object.keys(errors).length > 0) {
+                displayErrors(errors);
+            } else {
+                document.getElementById('errorSection').classList.add('hidden');
+            }
+            
+            updateStatsAndTable(filteredData);
+            document.getElementById('resultsSection').classList.remove('hidden');
+            
+            const errorCount = Object.keys(errors).length;
+            const successMsg = data.length + ' opportunities found';
+            const fullMsg = errorCount > 0 
+                ? successMsg + `, ${errorCount} stock(s) failed` 
+                : successMsg;
+            showToast('Analysis complete! ' + fullMsg, errorCount > 0 ? 'warning' : 'success');
+        }
+
+        function updateStatsAndTable(data) {
+            const tbody = document.getElementById('resultsBody');
+
+            
+
+            // Calculate stats
+
+            const totalCount = data.length;
+
+            const calls = data.filter(d => d.strategy === 'Covered Call');
+
+            const puts = data.filter(d => d.strategy === 'Cash-Secured Put');
+
+            const avgCallReturn = calls.length > 0 ? (calls.reduce((sum, d) => sum + d.return_percentage, 0) / calls.length).toFixed(2) : '0.00';
+
+            const avgPutReturn = puts.length > 0 ? (puts.reduce((sum, d) => sum + d.return_percentage, 0) / puts.length).toFixed(2) : '0.00';
+
+            const best = data.length > 0 ? data.reduce((max, d) => d.return_percentage > max.return_percentage ? d : max, data[0]) : null;
+
+
+            // Update stats
+
+            document.getElementById('totalCount').textContent = totalCount;
+
+            document.getElementById('avgCallReturn').textContent = avgCallReturn + '%';
+
+            document.getElementById('avgPutReturn').textContent = avgPutReturn + '%';
+
+            document.getElementById('bestOpportunity').textContent = best ? best.symbol : '-';
+
+
+            // Populate table
+
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="10" class="px-6 py-8 text-center text-gray-400">No results match your filters</td></tr>';
+            } else {
+            tbody.innerHTML = data.map(row => {
+
+                return `
+
+                <tr class="border-t border-gray-700 hover:bg-gray-750 transition">
+
+                    <td class="px-6 py-4 font-bold text-purple-400">${row.symbol}</td>
+
+                    <td class="px-6 py-4">
+
+                        <span class="px-2 py-1 rounded text-xs font-semibold ${row.strategy === 'Covered Call' ? 'bg-green-500/20 text-green-400' : 'bg-blue-500/20 text-blue-400'}">
+
+                            ${row.strategy}
+
+                        </span>
+
+                    </td>
+
+                    <td class="px-6 py-4 text-right">$${row.current_price.toFixed(2)}</td>
+
+                    <td class="px-6 py-4 text-right">$${row.strike_price.toFixed(2)}</td>
+
+                    <td class="px-6 py-4 text-right text-green-400">$${row.premium_total.toFixed(2)}</td>
+
+                    <td class="px-6 py-4 text-right font-bold text-purple-400">${row.return_percentage.toFixed(2)}%</td>
+
+                    <td class="px-6 py-4 text-right font-semibold ${row.implied_volatility > 0.5 ? 'text-red-400' : row.implied_volatility > 0.3 ? 'text-yellow-400' : 'text-green-400'}">${(row.implied_volatility * 100).toFixed(1)}%</td>
+
+                    <td class="px-6 py-4 text-right">
+                        ${row.lynch_fair_value ? `
+                            <div class="flex flex-col items-end">
+                                <span class="text-gray-200">$${row.lynch_fair_value.toFixed(2)}</span>
+                                <span class="text-xs ${row.relative_value_pct < 0 ? 'text-green-400' : 'text-red-400'} flex items-center gap-1">
+                                    ${row.relative_value_pct < 0 ? '<i class="fas fa-check-circle"></i>' : '<i class="fas fa-times-circle"></i>'}
+                                    ${Math.abs(row.relative_value_pct).toFixed(0)}% ${row.relative_value_pct < 0 ? 'Undervalued' : 'Overvalued'}
+                                </span>
+                            </div>
+                        ` : '<span class="text-gray-400">N/A</span>'}
+                    </td>
+
+                    <td class="px-6 py-4 text-right">
+                        ${row.dcf_intrinsic_value ? `
+                            <div class="flex flex-col items-end">
+                                <span class="text-gray-200">$${row.dcf_intrinsic_value.toFixed(2)}</span>
+                                <span class="text-xs ${((row.current_price - row.dcf_intrinsic_value) / row.dcf_intrinsic_value * 100) < 0 ? 'text-green-400' : 'text-red-400'} flex items-center gap-1">
+                                    ${((row.current_price - row.dcf_intrinsic_value) / row.dcf_intrinsic_value * 100) < 0 ? '<i class="fas fa-check-circle"></i>' : '<i class="fas fa-times-circle"></i>'}
+                                    ${Math.abs((row.current_price - row.dcf_intrinsic_value) / row.dcf_intrinsic_value * 100).toFixed(0)}% ${((row.current_price - row.dcf_intrinsic_value) / row.dcf_intrinsic_value * 100) < 0 ? 'Undervalued' : 'Overvalued'}
+                                </span>
+                            </div>
+                        ` : '<span class="text-gray-400">N/A</span>'}
+                    </td>
+
+                    <td class="px-6 py-4 text-right">
+                        ${row.analyst_target ? `
+                            <div class="flex flex-col items-end">
+                                <span class="${row.current_price < row.analyst_target ? 'text-green-400' : 'text-gray-200'}">$${row.analyst_target.toFixed(2)}</span>
+                                <span class="text-xs ${((row.current_price - row.analyst_target) / row.analyst_target * 100) < 0 ? 'text-green-400' : 'text-red-400'} flex items-center gap-1">
+                                    ${((row.current_price - row.analyst_target) / row.analyst_target * 100) < 0 ? '<i class="fas fa-check-circle"></i>' : '<i class="fas fa-times-circle"></i>'}
+                                    ${Math.abs((row.current_price - row.analyst_target) / row.analyst_target * 100).toFixed(0)}% ${((row.current_price - row.analyst_target) / row.analyst_target * 100) < 0 ? 'Upside' : 'Downside'}
+                                </span>
+                            </div>
+                        ` : '<span class="text-gray-400">N/A</span>'}
+                    </td>
+
+                    <td class="px-6 py-4 text-center">
+                        ${row.relative_value_pct !== null && row.relative_value_pct !== undefined && row.lynch_fair_value ? `
+                            <div class="flex flex-col items-center gap-1">
+                                <span class="font-semibold text-gray-200">
+                                    $${Math.abs(row.current_price - row.lynch_fair_value).toFixed(2)}
+                                </span>
+                                <span class="px-3 py-1 rounded-full text-xs font-medium ${row.relative_value_pct < 0 ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}">
+                                    ${row.relative_value_pct < 0 ? '↓ ' : '↑ '}${Math.abs(row.relative_value_pct).toFixed(0)}%
+                                </span>
+                            </div>
+                        ` : '<span class="text-gray-400">N/A</span>'}
+                    </td>
+
+                </tr>
+
+                `;
+
+            }).join('');
+
+            }
+        }
+
+        // Sorting functionality
+        function sortTable(column) {
+            if (sortColumn === column) {
+                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortColumn = column;
+                sortDirection = 'asc';
+            }
+            
+            filteredData.sort((a, b) => {
+                let aVal = a[column];
+                let bVal = b[column];
+                
+                // Handle null values
+                if (aVal === null || aVal === undefined) return 1;
+                if (bVal === null || bVal === undefined) return -1;
+                
+                // Compare
+                if (typeof aVal === 'string') {
+                    return sortDirection === 'asc' 
+                        ? aVal.localeCompare(bVal)
+                        : bVal.localeCompare(aVal);
+                } else {
+                    return sortDirection === 'asc' 
+                        ? aVal - bVal
+                        : bVal - aVal;
+                }
+            });
+            
+            updateStatsAndTable(filteredData);
+            showToast(`Sorted by ${column} (${sortDirection})`, 'info');
+        }
+
+        // Filtering functionality
+        function toggleFilters() {
+            const filterSection = document.getElementById('filterSection');
+            filterSection.classList.toggle('hidden');
+        }
+
+        function applyFilters() {
+            const searchTerm = document.getElementById('searchFilter')?.value.toUpperCase() || '';
+            const strategy = document.getElementById('strategyFilter')?.value || 'all';
+            const minReturn = parseFloat(document.getElementById('minReturnFilter')?.value) || 0;
+            const maxIV = parseFloat(document.getElementById('maxIVFilter')?.value) || 100;
+            
+            filteredData = analysisData.filter(row => {
+                const matchesSearch = row.symbol.toUpperCase().includes(searchTerm);
+                const matchesStrategy = strategy === 'all' || row.strategy === strategy;
+                const matchesReturn = row.return_percentage >= minReturn;
+                const matchesIV = (row.implied_volatility * 100) <= maxIV;
+                
+                return matchesSearch && matchesStrategy && matchesReturn && matchesIV;
+            });
+            
+            updateStatsAndTable(filteredData);
+        }
+
+        function clearFilters() {
+            document.getElementById('searchFilter').value = '';
+            document.getElementById('strategyFilter').value = 'all';
+            document.getElementById('minReturnFilter').value = '';
+            document.getElementById('maxIVFilter').value = '';
+            
+            filteredData = [...analysisData];
+            updateStatsAndTable(filteredData);
+            showToast('Filters cleared', 'info');
+        }
+
+
+
+        function downloadCSV() {
+
+            if (!analysisData) return;
+
+
+
+            const headers = Object.keys(analysisData[0]);
+
+            const csvContent = [
+
+                headers.join(','),
+
+                ...analysisData.map(row => headers.map(h => row[h]).join(','))
+
+            ].join('\\n');
+
+
+
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+
+            a.href = url;
+
+            a.download = `option_analysis_${new Date().toISOString().split('T')[0]}.csv`;
+
+            a.click();
+
+        }
+
+    </script>
+
+</body>
+
+</html>
+
+
