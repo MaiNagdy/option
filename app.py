@@ -214,7 +214,9 @@ async def login(
 @app.get("/signup", response_class=HTMLResponse)
 async def signup_page(request: Request):
     """Signup page"""
-    return templates.TemplateResponse("signup.html", {"request": request})
+    return templates.TemplateResponse("signup.html", {
+        "request": request
+    })
 
 
 @app.post("/signup")
