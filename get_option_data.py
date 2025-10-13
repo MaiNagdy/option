@@ -763,138 +763,127 @@ def get_option_data_for_symbols(symbols):
             shares_outstanding = info.get('sharesOutstanding')
             earnings_growth = info.get('earningsGrowth') or info.get('earningsQuarterlyGrowth')
             
-            # Calculate intrinsic values (Alpha Spread methodology)
-            graham_number = None
-            if eps and book_value and eps > 0 and book_value > 0:
-                graham_number = (22.5 * eps * book_value) ** 0.5
+            # === INTRINSIC VALUE CALCULATIONS (Alpha Spread methodology) ===
             
-            # DCF Value - Conservative Alpha Spread approach
+            # 1. DCF Value - Standalone Conservative DCF
             dcf_value = None
             if free_cash_flow and shares_outstanding and free_cash_flow > 0 and shares_outstanding > 0:
                 fcf_per_share = free_cash_flow / shares_outstanding
                 
-                # Conservative growth rate
+                # Determine growth rate based on historical growth
                 if earnings_growth and earnings_growth > 0:
-                    growth_rate = earnings_growth * 0.7
-                    growth_rate = min(growth_rate, 0.15)
+                    # Use 60% of historical growth for conservatism
+                    growth_rate = min(earnings_growth * 0.6, 0.20)  # Cap at 20%
                 else:
-                    growth_rate = 0.04
+                    growth_rate = 0.05  # Default 5% for no growth companies
                 
-                # Conservative WACC
+                # Risk-adjusted discount rate (WACC proxy)
                 if market_cap:
-                    if market_cap > 200e9:
+                    if market_cap > 200e9:  # Mega-cap
+                        discount_rate = 0.09
+                    elif market_cap > 50e9:  # Large-cap
                         discount_rate = 0.10
-                    elif market_cap > 50e9:
-                        discount_rate = 0.11
-                    elif market_cap > 10e9:
+                    elif market_cap > 10e9:  # Mid-cap
                         discount_rate = 0.12
-                    else:
-                        discount_rate = 0.14
+                    else:  # Small-cap
+                        discount_rate = 0.15
                 else:
                     discount_rate = 0.12
                 
-                terminal_growth = 0.025
+                terminal_growth = 0.025  # Long-term GDP growth
                 
                 if discount_rate > terminal_growth:
-                    # Stage 1: High growth (5 years)
-                    stage1_pv = 0
+                    # Project 10 years of FCF with declining growth
+                    total_pv = 0
                     current_fcf = fcf_per_share
                     
-                    for year in range(1, 6):
-                        year_growth = growth_rate * (0.85 ** (year - 1))
+                    for year in range(1, 11):
+                        # Gradually decline growth rate to terminal
+                        year_growth = terminal_growth + (growth_rate - terminal_growth) * ((10 - year) / 10)
                         current_fcf = current_fcf * (1 + year_growth)
                         pv = current_fcf / ((1 + discount_rate) ** year)
-                        stage1_pv += pv
+                        total_pv += pv
                     
-                    # Stage 2: Transition (years 6-10)
-                    stage2_pv = 0
-                    transition_years = 5
-                    for year in range(6, 11):
-                        year_in_stage2 = year - 5
-                        year_growth = terminal_growth + (year_growth - terminal_growth) * ((transition_years - year_in_stage2) / transition_years)
-                        current_fcf = current_fcf * (1 + year_growth)
-                        pv = current_fcf / ((1 + discount_rate) ** year)
-                        stage2_pv += pv
-                    
-                    # Terminal value
+                    # Terminal value (perpetuity growth model)
                     terminal_fcf = current_fcf * (1 + terminal_growth)
                     terminal_value = terminal_fcf / (discount_rate - terminal_growth)
                     terminal_pv = terminal_value / ((1 + discount_rate) ** 10)
                     
-                    dcf_value = stage1_pv + stage2_pv + terminal_pv
+                    dcf_value = total_pv + terminal_pv
+                    
+                    # Sanity check: DCF shouldn't be absurdly high
+                    if dcf_value > current_price * 5:  # More than 5x current price
+                        dcf_value = current_price * 2  # Cap at 2x for conservatism
             
-            # Blended Intrinsic Value (with fallbacks for speculative stocks)
+            # 2. Intrinsic Value - P/E or Graham based (simpler, more intuitive)
             lynch_value = None
-            pe_value = None
             ps_ratio = info.get('priceToSalesTrailing12Months')
             revenue_growth = info.get('revenueGrowth')
             
-            # Try earnings-based valuation first
+            # For profitable companies: Use P/E based valuation
             if eps and eps > 0:
-                # Conservative P/E valuation
+                # Forward-looking P/E based on growth and profitability
                 if earnings_growth and earnings_growth > 0:
+                    # Fair P/E = Growth Rate (as percentage), capped at 30
                     growth_pct = earnings_growth * 100
-                    fair_pe = min(growth_pct, 25)
-                    pe_value = eps * fair_pe
+                    fair_pe = min(max(growth_pct, 10), 30)  # Between 10-30 P/E
+                    lynch_value = eps * fair_pe
+                elif pe_ratio and pe_ratio > 0:
+                    # Use current P/E but be conservative
+                    fair_pe = min(pe_ratio * 0.9, 20)  # 90% of current, max 20
+                    lynch_value = eps * fair_pe
                 else:
-                    pe_value = eps * 12
+                    # Default conservative P/E for stable companies
+                    lynch_value = eps * 15
+                
+                # Use Graham Number as a sanity check/alternative
+                if book_value and book_value > 0:
+                    graham_number = (22.5 * eps * book_value) ** 0.5
+                    # If Graham is lower, blend it in for conservatism
+                    if graham_number < lynch_value:
+                        lynch_value = (lynch_value * 0.7) + (graham_number * 0.3)
             
-            # FALLBACK for speculative/pre-profit stocks (like BITF, NNE, ASTS)
-            # Use Price-to-Sales ratio when earnings are negative/unavailable
+            # For pre-profit/speculative companies: Use alternative methods
             elif ps_ratio and revenue_growth:
                 total_revenue = info.get('totalRevenue')
                 if total_revenue and shares_outstanding and total_revenue > 0 and shares_outstanding > 0:
                     revenue_per_share = total_revenue / shares_outstanding
                     
-                    # For high-growth pre-profit companies, use conservative P/S multiple
-                    if revenue_growth > 1.0:  # >100% growth
-                        target_ps = 8
-                    elif revenue_growth > 0.5:  # >50% growth
-                        target_ps = 5
-                    elif revenue_growth > 0.25:  # >25% growth
-                        target_ps = 3
+                    # Growth-adjusted P/S multiples
+                    if revenue_growth > 1.0:  # Hyper-growth >100%
+                        target_ps = 10
+                    elif revenue_growth > 0.5:  # High-growth >50%
+                        target_ps = 6
+                    elif revenue_growth > 0.25:  # Good growth >25%
+                        target_ps = 4
                     else:
                         target_ps = 2
                     
-                    pe_value = revenue_per_share * target_ps
+                    lynch_value = revenue_per_share * target_ps
             
-            # Another FALLBACK: Use book value multiple
-            elif book_value and book_value > 0:
-                if pb_ratio and pb_ratio > 0:
-                    target_pb = min(pb_ratio, 3.0)  # Cap at 3x book
-                    pe_value = book_value * target_pb
-                else:
-                    pe_value = book_value * 1.5
+            # Final fallback: Use book value or analyst target
+            if not lynch_value:
+                if book_value and book_value > 0:
+                    # Asset-based valuation
+                    if pb_ratio and pb_ratio > 0:
+                        target_pb = min(pb_ratio * 0.85, 2.5)  # Conservative P/B
+                        lynch_value = book_value * target_pb
+                    else:
+                        lynch_value = book_value * 1.5
+                elif analyst_target and analyst_target > 0:
+                    # Use 80% of analyst target as proxy
+                    lynch_value = analyst_target * 0.80
             
-            # Blend methods
-            values_to_blend = []
-            weights = []
-            
-            if dcf_value and dcf_value > 0:
-                values_to_blend.append(dcf_value)
-                weights.append(0.50)
-            
-            if graham_number and graham_number > 0:
-                values_to_blend.append(graham_number)
-                weights.append(0.25)
-            
-            if pe_value and pe_value > 0:
-                values_to_blend.append(pe_value)
-                weights.append(0.25)
-            
-            # Calculate weighted average
-            if values_to_blend:
-                total_weight = sum(weights)
-                lynch_value = sum(v * w for v, w in zip(values_to_blend, weights)) / total_weight
-            
-            # Final FALLBACK: Use analyst target as proxy
-            if not lynch_value and analyst_target and analyst_target > 0:
-                lynch_value = analyst_target * 0.85
-            
-            # Calculate Relative Value (vs Intrinsic Value)
+            # 3. Relative Value - Compare to most conservative valuation
             relative_value_pct = None
             if lynch_value and lynch_value > 0:
-                relative_value_pct = ((current_price - lynch_value) / lynch_value) * 100
+                # Use the LOWER of intrinsic value or DCF (more conservative)
+                if dcf_value and dcf_value > 0:
+                    conservative_value = min(lynch_value, dcf_value)
+                else:
+                    conservative_value = lynch_value
+                
+                relative_value_pct = ((current_price - conservative_value) / conservative_value) * 100
             
             # Get options
             expirations = ticker.options
