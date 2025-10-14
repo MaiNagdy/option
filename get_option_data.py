@@ -776,32 +776,35 @@ def get_option_data_for_symbols(symbols):
             
             # === INTRINSIC VALUE CALCULATIONS (Alpha Spread methodology) ===
             
-            # 1. DCF Value - Standalone Conservative DCF
+            # 1. DCF Value - Alpha Spread Style (More Optimistic for Growth)
             dcf_value = None
             if free_cash_flow and shares_outstanding and free_cash_flow > 0 and shares_outstanding > 0:
                 fcf_per_share = free_cash_flow / shares_outstanding
                 
-                # Determine growth rate based on historical growth
+                # Use full historical growth or estimate based on company profile
                 if earnings_growth and earnings_growth > 0:
-                    # Use 60% of historical growth for conservatism
-                    growth_rate = min(earnings_growth * 0.6, 0.20)  # Cap at 20%
+                    # Use 90% of historical growth (less conservative)
+                    growth_rate = min(earnings_growth * 0.9, 0.35)  # Cap at 35% for high-growth
+                elif revenue_growth and revenue_growth > 0:
+                    # Use revenue growth as proxy
+                    growth_rate = min(revenue_growth * 0.8, 0.30)
                 else:
-                    growth_rate = 0.05  # Default 5% for no growth companies
+                    growth_rate = 0.08  # Default 8% for stable growth
                 
-                # Risk-adjusted discount rate (WACC proxy)
+                # More optimistic discount rates (Alpha Spread style)
                 if market_cap:
                     if market_cap > 200e9:  # Mega-cap
-                        discount_rate = 0.09
+                        discount_rate = 0.08
                     elif market_cap > 50e9:  # Large-cap
-                        discount_rate = 0.10
+                        discount_rate = 0.09
                     elif market_cap > 10e9:  # Mid-cap
-                        discount_rate = 0.12
+                        discount_rate = 0.10
                     else:  # Small-cap
-                        discount_rate = 0.15
+                        discount_rate = 0.12
                 else:
-                    discount_rate = 0.12
+                    discount_rate = 0.10
                 
-                terminal_growth = 0.025  # Long-term GDP growth
+                terminal_growth = 0.03  # Slightly higher terminal growth
                 
                 if discount_rate > terminal_growth:
                     # Project 10 years of FCF with declining growth
@@ -822,37 +825,43 @@ def get_option_data_for_symbols(symbols):
                     
                     dcf_value = total_pv + terminal_pv
                     
-                    # Sanity check: DCF shouldn't be absurdly high
-                    if dcf_value > current_price * 5:  # More than 5x current price
-                        dcf_value = current_price * 2  # Cap at 2x for conservatism
+                    # More lenient sanity check (Alpha Spread allows higher)
+                    if dcf_value > current_price * 10:  # Allow up to 10x current price
+                        dcf_value = current_price * 3  # Cap at 3x if extreme
             
-            # 2. Intrinsic Value - P/E or Graham based (simpler, more intuitive)
+            # 2. Intrinsic Value - Growth-Adjusted P/E (Alpha Spread Style)
             lynch_value = None
             ps_ratio = info.get('priceToSalesTrailing12Months')
             revenue_growth = info.get('revenueGrowth')
             
             # For profitable companies: Use P/E based valuation
             if eps and eps > 0:
-                # Forward-looking P/E based on growth and profitability
+                # Alpha Spread style: More generous P/E for growth stocks
                 if earnings_growth and earnings_growth > 0:
-                    # Fair P/E = Growth Rate (as percentage), capped at 30
+                    # Fair P/E can be much higher for high-growth companies
                     growth_pct = earnings_growth * 100
-                    fair_pe = min(max(growth_pct, 10), 30)  # Between 10-30 P/E
+                    
+                    # Alpha Spread allows higher multiples:
+                    # - High growth (>40%): P/E up to 70
+                    # - Medium growth (20-40%): P/E up to 50
+                    # - Low growth (<20%): P/E up to 35
+                    if growth_pct > 40:
+                        fair_pe = min(growth_pct * 1.5, 70)  # Growth stocks get 1.5x multiplier
+                    elif growth_pct > 20:
+                        fair_pe = min(growth_pct * 1.3, 50)
+                    else:
+                        fair_pe = min(max(growth_pct, 12), 35)
+                    
                     lynch_value = eps * fair_pe
                 elif pe_ratio and pe_ratio > 0:
-                    # Use current P/E but be conservative
-                    fair_pe = min(pe_ratio * 0.9, 20)  # 90% of current, max 20
+                    # Use current P/E with minimal discount
+                    fair_pe = min(pe_ratio * 0.95, 40)  # 95% of current, max 40
                     lynch_value = eps * fair_pe
                 else:
-                    # Default conservative P/E for stable companies
-                    lynch_value = eps * 15
+                    # Default P/E for stable companies
+                    lynch_value = eps * 18
                 
-                # Use Graham Number as a sanity check/alternative
-                if book_value and book_value > 0:
-                    graham_number = (22.5 * eps * book_value) ** 0.5
-                    # If Graham is lower, blend it in for conservatism
-                    if graham_number < lynch_value:
-                        lynch_value = (lynch_value * 0.7) + (graham_number * 0.3)
+                # NO Graham blending - Alpha Spread doesn't do this
             
             # For pre-profit/speculative companies: Use alternative methods
             elif ps_ratio and revenue_growth:
@@ -860,41 +869,36 @@ def get_option_data_for_symbols(symbols):
                 if total_revenue and shares_outstanding and total_revenue > 0 and shares_outstanding > 0:
                     revenue_per_share = total_revenue / shares_outstanding
                     
-                    # Growth-adjusted P/S multiples
+                    # More generous P/S multiples (Alpha Spread style)
                     if revenue_growth > 1.0:  # Hyper-growth >100%
-                        target_ps = 10
+                        target_ps = 15  # Much higher for hyper-growth
                     elif revenue_growth > 0.5:  # High-growth >50%
-                        target_ps = 6
+                        target_ps = 10
                     elif revenue_growth > 0.25:  # Good growth >25%
-                        target_ps = 4
+                        target_ps = 6
                     else:
-                        target_ps = 2
+                        target_ps = 3
                     
                     lynch_value = revenue_per_share * target_ps
             
             # Final fallback: Use book value or analyst target
             if not lynch_value:
                 if book_value and book_value > 0:
-                    # Asset-based valuation
+                    # Asset-based valuation (more generous)
                     if pb_ratio and pb_ratio > 0:
-                        target_pb = min(pb_ratio * 0.85, 2.5)  # Conservative P/B
+                        target_pb = min(pb_ratio * 0.95, 4.0)  # Less conservative P/B
                         lynch_value = book_value * target_pb
                     else:
-                        lynch_value = book_value * 1.5
+                        lynch_value = book_value * 2.0
                 elif analyst_target and analyst_target > 0:
-                    # Use 80% of analyst target as proxy
-                    lynch_value = analyst_target * 0.80
+                    # Use 90% of analyst target as proxy
+                    lynch_value = analyst_target * 0.90
             
-            # 3. Relative Value - Compare to most conservative valuation
+            # 3. Relative Value - Use intrinsic value (not conservative blend)
             relative_value_pct = None
             if lynch_value and lynch_value > 0:
-                # Use the LOWER of intrinsic value or DCF (more conservative)
-                if dcf_value and dcf_value > 0:
-                    conservative_value = min(lynch_value, dcf_value)
-                else:
-                    conservative_value = lynch_value
-                
-                relative_value_pct = ((current_price - conservative_value) / conservative_value) * 100
+                # Alpha Spread uses intrinsic value directly
+                relative_value_pct = ((current_price - lynch_value) / lynch_value) * 100
             
             # Get options
             expirations = ticker.options
