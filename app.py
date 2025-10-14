@@ -139,6 +139,64 @@ def save_analysis_to_history(email, symbols, results, errors):
     except Exception as e:
         print(f"⚠️ Could not save to history: {e}")
 
+# Password Reset Storage
+RESET_DATA_FILE = "password_resets.json"
+
+def load_reset_data():
+    """Load password reset tokens from file"""
+    try:
+        if os.path.exists(RESET_DATA_FILE):
+            with open(RESET_DATA_FILE, 'r') as f:
+                return json.load(f)
+        return {}
+    except Exception as e:
+        print(f"⚠️ Could not load reset data: {e}")
+        return {}
+
+def save_reset_data(reset_db):
+    """Save password reset tokens to file"""
+    try:
+        with open(RESET_DATA_FILE, 'w') as f:
+            json.dump(reset_db, f, indent=2)
+    except Exception as e:
+        print(f"⚠️ Could not save reset data: {e}")
+
+def create_reset_token(email: str) -> str:
+    """Create a password reset token for an email"""
+    reset_db = load_reset_data()
+    token = secrets.token_urlsafe(32)
+    reset_db[token] = {
+        "email": email,
+        "created": datetime.now().isoformat(),
+        "expires": (datetime.now() + timedelta(hours=1)).isoformat()
+    }
+    save_reset_data(reset_db)
+    return token
+
+def validate_reset_token(token: str) -> Optional[str]:
+    """Validate a reset token and return the email if valid"""
+    reset_db = load_reset_data()
+    if token not in reset_db:
+        return None
+    
+    reset_data = reset_db[token]
+    expires = datetime.fromisoformat(reset_data["expires"])
+    
+    if datetime.now() > expires:
+        # Token expired, remove it
+        del reset_db[token]
+        save_reset_data(reset_db)
+        return None
+    
+    return reset_data["email"]
+
+def delete_reset_token(token: str):
+    """Delete a reset token after use"""
+    reset_db = load_reset_data()
+    if token in reset_db:
+        del reset_db[token]
+        save_reset_data(reset_db)
+
 # Session storage (in production, use Redis or similar)
 sessions = {}
 
@@ -255,6 +313,95 @@ async def logout(request: Request):
     
     response = RedirectResponse("/")
     response.delete_cookie("session_id")
+    return response
+
+
+@app.get("/forgot-password", response_class=HTMLResponse)
+async def forgot_password_page(request: Request):
+    """Forgot password page"""
+    return templates.TemplateResponse("forgot_password.html", {"request": request})
+
+
+@app.post("/forgot-password")
+async def forgot_password(
+    request: Request,
+    email: str = Form(...)
+):
+    """Handle forgot password request"""
+    if email not in users_db:
+        return templates.TemplateResponse(
+            "forgot_password.html",
+            {"request": request, "error": "Email not found in our system"}
+        )
+    
+    # Create reset token
+    token = create_reset_token(email)
+    
+    # In production, send email with reset link
+    # For now, we'll display the link on the page
+    reset_link = f"{request.base_url}reset-password/{token}"
+    
+    return templates.TemplateResponse(
+        "forgot_password.html",
+        {
+            "request": request,
+            "success": "Password reset link generated! Copy the link below and open it in your browser.",
+            "reset_link": reset_link
+        }
+    )
+
+
+@app.get("/reset-password/{token}", response_class=HTMLResponse)
+async def reset_password_page(request: Request, token: str):
+    """Reset password page"""
+    email = validate_reset_token(token)
+    if not email:
+        return templates.TemplateResponse(
+            "reset_password.html",
+            {"request": request, "token": token, "error": "Invalid or expired reset link"}
+        )
+    
+    return templates.TemplateResponse("reset_password.html", {"request": request, "token": token})
+
+
+@app.post("/reset-password/{token}")
+async def reset_password(
+    request: Request,
+    token: str,
+    password: str = Form(...),
+    confirm_password: str = Form(...)
+):
+    """Handle password reset"""
+    email = validate_reset_token(token)
+    if not email:
+        return templates.TemplateResponse(
+            "reset_password.html",
+            {"request": request, "token": token, "error": "Invalid or expired reset link"}
+        )
+    
+    if password != confirm_password:
+        return templates.TemplateResponse(
+            "reset_password.html",
+            {"request": request, "token": token, "error": "Passwords do not match"}
+        )
+    
+    if len(password) < 6:
+        return templates.TemplateResponse(
+            "reset_password.html",
+            {"request": request, "token": token, "error": "Password must be at least 6 characters"}
+        )
+    
+    # Update password
+    users_db[email]["password"] = hash_password(password)
+    save_user_data()
+    
+    # Delete the reset token
+    delete_reset_token(token)
+    
+    # Create session and log user in
+    session_id = create_session(email)
+    response = RedirectResponse("/dashboard", status_code=303)
+    response.set_cookie("session_id", session_id, httponly=True, max_age=604800)
     return response
 
 
