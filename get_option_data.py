@@ -3,6 +3,7 @@ import os
 from datetime import datetime, timedelta
 import yfinance as yf
 import pandas as pd
+import numpy as np
 import requests
 from urllib.parse import quote
 from ib_insync import IB, Stock, util
@@ -29,6 +30,16 @@ SYMBOLS = [
 ]
 
 TARGET_DAYS = 30  # Target expiration ~30 days from now
+
+
+def clean_value(value):
+    """Convert NaN, inf, or None to None (JSON null)"""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        if np.isnan(value) or np.isinf(value):
+            return None
+    return value
 
 
 def connect_to_ibkr():
@@ -983,29 +994,29 @@ def get_option_data_for_symbols(symbols):
                 results.append({
                     'symbol': symbol,
                     'strategy': 'Covered Call',
-                    'current_price': current_price,
-                    'strike_price': atm_strike,
+                    'current_price': clean_value(current_price),
+                    'strike_price': clean_value(atm_strike),
                     'expiration_date': target_expiration,
                     'days_to_expiration': days_to_exp,
-                    'premium_per_share': call_premium_per_share,
-                    'premium_total': call_premium_total,
-                    'capital_required': call_capital,
-                    'return_percentage': call_return_pct,
-                    'volume': float(atm_call.get('volume', 0)),
-                    'open_interest': float(atm_call.get('openInterest', 0)),
-                    'implied_volatility': float(atm_call.get('impliedVolatility', 0)),
+                    'premium_per_share': clean_value(call_premium_per_share),
+                    'premium_total': clean_value(call_premium_total),
+                    'capital_required': clean_value(call_capital),
+                    'return_percentage': clean_value(call_return_pct),
+                    'volume': clean_value(float(atm_call.get('volume', 0))),
+                    'open_interest': clean_value(float(atm_call.get('openInterest', 0))),
+                    'implied_volatility': clean_value(float(atm_call.get('impliedVolatility', 0))),
                     'iv_reason': iv_reason,
-                    'pe_ratio': pe_ratio,
-                    'pb_ratio': pb_ratio,
-                    'peg_ratio': peg_ratio,
-                    'graham_intrinsic_value': graham_number,
-                    'dcf_intrinsic_value': dcf_value,
-                    'lynch_fair_value': lynch_value,
-                    'analyst_target': analyst_target,
-                    'analyst_low': analyst_low,
-                    'analyst_high': analyst_high,
-                    'num_analysts': num_analysts,
-                    'relative_value_pct': relative_value_pct
+                    'pe_ratio': clean_value(pe_ratio),
+                    'pb_ratio': clean_value(pb_ratio),
+                    'peg_ratio': clean_value(peg_ratio),
+                    'graham_intrinsic_value': clean_value(graham_number),
+                    'dcf_intrinsic_value': clean_value(dcf_value),
+                    'lynch_fair_value': clean_value(lynch_value),
+                    'analyst_target': clean_value(analyst_target),
+                    'analyst_low': clean_value(analyst_low),
+                    'analyst_high': clean_value(analyst_high),
+                    'num_analysts': clean_value(num_analysts),
+                    'relative_value_pct': clean_value(relative_value_pct)
                 })
             
             # Add CASH-SECURED PUT result (if put option exists)
@@ -1030,29 +1041,29 @@ def get_option_data_for_symbols(symbols):
                 results.append({
                     'symbol': symbol,
                     'strategy': 'Cash-Secured Put',
-                    'current_price': current_price,
-                    'strike_price': atm_strike,
+                    'current_price': clean_value(current_price),
+                    'strike_price': clean_value(atm_strike),
                     'expiration_date': target_expiration,
                     'days_to_expiration': days_to_exp,
-                    'premium_per_share': put_premium_per_share,
-                    'premium_total': put_premium_total,
-                    'capital_required': put_capital,
-                    'return_percentage': put_return_pct,
-                    'volume': float(atm_put.get('volume', 0)),
-                    'open_interest': float(atm_put.get('openInterest', 0)),
-                    'implied_volatility': float(atm_put.get('impliedVolatility', 0)),
+                    'premium_per_share': clean_value(put_premium_per_share),
+                    'premium_total': clean_value(put_premium_total),
+                    'capital_required': clean_value(put_capital),
+                    'return_percentage': clean_value(put_return_pct),
+                    'volume': clean_value(float(atm_put.get('volume', 0))),
+                    'open_interest': clean_value(float(atm_put.get('openInterest', 0))),
+                    'implied_volatility': clean_value(float(atm_put.get('impliedVolatility', 0))),
                     'iv_reason': iv_reason,
-                    'pe_ratio': pe_ratio,
-                    'pb_ratio': pb_ratio,
-                    'peg_ratio': peg_ratio,
-                    'graham_intrinsic_value': graham_number,
-                    'dcf_intrinsic_value': dcf_value,
-                    'lynch_fair_value': lynch_value,
-                    'analyst_target': analyst_target,
-                    'analyst_low': analyst_low,
-                    'analyst_high': analyst_high,
-                    'num_analysts': num_analysts,
-                    'relative_value_pct': relative_value_pct
+                    'pe_ratio': clean_value(pe_ratio),
+                    'pb_ratio': clean_value(pb_ratio),
+                    'peg_ratio': clean_value(peg_ratio),
+                    'graham_intrinsic_value': clean_value(graham_number),
+                    'dcf_intrinsic_value': clean_value(dcf_value),
+                    'lynch_fair_value': clean_value(lynch_value),
+                    'analyst_target': clean_value(analyst_target),
+                    'analyst_low': clean_value(analyst_low),
+                    'analyst_high': clean_value(analyst_high),
+                    'num_analysts': clean_value(num_analysts),
+                    'relative_value_pct': clean_value(relative_value_pct)
                 })
             
             # Print summary
