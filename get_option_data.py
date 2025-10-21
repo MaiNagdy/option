@@ -9,6 +9,7 @@ from urllib.parse import quote
 from ib_insync import IB, Stock, util
 import asyncio
 import nest_asyncio
+import time
 
 # Enable nested event loops for ib_insync to work with FastAPI
 nest_asyncio.apply()
@@ -305,7 +306,8 @@ def get_option_data():
             free_cash_flow = info.get('freeCashflow')
             shares_outstanding = info.get('sharesOutstanding')
             earnings_growth = info.get('earningsGrowth') or info.get('earningsQuarterlyGrowth')
-            revenue_growth = info.get('revenueGrowth')
+            revenue_growth = info.get('revenueGrowth') or 0
+            total_revenue = info.get('totalRevenue') or 0
             
             # Calculate INTRINSIC VALUE #1: Graham Number (Benjamin Graham's Formula)
             # Formula: sqrt(22.5 × EPS × Book Value per Share)
@@ -371,7 +373,7 @@ def get_option_data():
                     terminal_fcf = current_fcf * (1 + terminal_growth)
                     terminal_value = terminal_fcf / (discount_rate - terminal_growth)
                     terminal_pv = terminal_value / ((1 + discount_rate) ** 10)
-                    
+                
                     dcf_value = stage1_pv + stage2_pv + terminal_pv
             
             # Calculate INTRINSIC VALUE #3: Blended Intrinsic Value (Like Alpha Spread)
@@ -395,8 +397,6 @@ def get_option_data():
             # FALLBACK for speculative/pre-profit stocks (like BITF, NNE, ASTS)
             # Use Price-to-Sales ratio when earnings are negative/unavailable
             elif ps_ratio and revenue_growth:
-                # Get total revenue
-                total_revenue = info.get('totalRevenue')
                 if total_revenue and shares_outstanding and total_revenue > 0 and shares_outstanding > 0:
                     revenue_per_share = total_revenue / shares_outstanding
                     
@@ -431,10 +431,6 @@ def get_option_data():
             if dcf_value and dcf_value > 0:
                 values_to_blend.append(dcf_value)
                 weights.append(0.50)  # DCF gets 50% weight
-            
-            if graham_number and graham_number > 0:
-                values_to_blend.append(graham_number)
-                weights.append(0.25)  # Graham gets 25% weight
             
             if pe_value and pe_value > 0:
                 values_to_blend.append(pe_value)
@@ -536,7 +532,7 @@ def get_option_data():
                     call_premium_per_share = (call_bid + call_ask) / 2  # mid price
                 else:
                     call_premium_per_share = call_last
-                    
+                
                 call_premium_total = call_premium_per_share * 100  # per contract
                 call_capital = current_price * 100  # capital tied up in 100 shares
                 call_return_pct = (call_premium_total / call_capital * 100) if call_capital > 0 else 0
@@ -587,11 +583,11 @@ def get_option_data():
                     put_premium_per_share = (put_bid + put_ask) / 2  # mid price
                 else:
                     put_premium_per_share = put_last
-                    
+                
                 put_premium_total = put_premium_per_share * 100  # per contract
                 put_capital = atm_strike * 100  # cash secured (strike * 100)
                 put_return_pct = (put_premium_total / put_capital * 100) if put_capital > 0 else 0
-                
+            
                 # Add cash-secured put result
                 results.append({
                     'symbol': symbol,
@@ -655,7 +651,6 @@ def get_option_data():
         df['capital_required'] = df['capital_required'].apply(lambda x: f"${x:,.2f}")
         df['return_percentage'] = df['return_percentage'].apply(lambda x: f"{x:.3f}%")
         df['implied_volatility'] = df['implied_volatility'].apply(lambda x: f"{x:.2%}")
-        df['graham_intrinsic_value'] = df['graham_intrinsic_value'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
         df['dcf_intrinsic_value'] = df['dcf_intrinsic_value'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
         df['lynch_fair_value'] = df['lynch_fair_value'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
         
@@ -665,7 +660,7 @@ def get_option_data():
             'expiration_date', 'days_to_expiration', 'premium_per_share',
             'premium_total', 'capital_required', 'return_percentage',
             'volume', 'open_interest', 'implied_volatility',
-            'graham_intrinsic_value', 'dcf_intrinsic_value', 'lynch_fair_value'
+            'dcf_intrinsic_value', 'lynch_fair_value'
         ]].copy()
         
         display_df.columns = [
@@ -673,7 +668,7 @@ def get_option_data():
             'Expiration', 'DTE', 'Premium/Share',
             'Premium Total', 'Capital Required', 'Return %',
             'Volume', 'Open Interest', 'IV',
-            'Graham IV', 'DCF IV', 'Lynch FV'
+            'DCF IV', 'Intrinsic Value'
         ]
         
         # Print the results
@@ -740,7 +735,7 @@ def get_option_data_for_symbols(symbols):
     print(f"\n📊 Analyzing {len(symbols)} symbols: {', '.join(symbols)}")
     print("=" * 80)
     
-    for symbol in symbols:
+    for idx, symbol in enumerate(symbols):
         try:
             print(f"🔍 Analyzing {symbol}...", end=' ', flush=True)
             ticker = yf.Ticker(symbol)
@@ -759,8 +754,11 @@ def get_option_data_for_symbols(symbols):
             pe_ratio = info.get('trailingPE') or info.get('forwardPE')
             pb_ratio = info.get('priceToBook')
             peg_ratio = info.get('pegRatio')
+            ps_ratio = info.get('priceToSalesTrailing12Months')
             market_cap = info.get('marketCap')
-            
+            dividend_yield = info.get('dividendYield')
+            ev_ebitda = info.get('enterpriseToEbitda')
+
             # Get Wall Street analyst targets
             analyst_target = info.get('targetMeanPrice')
             analyst_low = info.get('targetLowPrice')
@@ -773,7 +771,13 @@ def get_option_data_for_symbols(symbols):
             free_cash_flow = info.get('freeCashflow')
             shares_outstanding = info.get('sharesOutstanding')
             earnings_growth = info.get('earningsGrowth') or info.get('earningsQuarterlyGrowth')
-            
+            revenue_growth = info.get('revenueGrowth') or 0
+
+            # Calculate Graham Number (Benjamin Graham's Formula)
+            graham_number = None
+            if eps and book_value and eps > 0 and book_value > 0:
+                graham_number = (22.5 * eps * book_value) ** 0.5
+
             # === INTRINSIC VALUE CALCULATIONS (Alpha Spread methodology) ===
             
             # 1. DCF Value - Alpha Spread Style (More Optimistic for Growth)
@@ -822,9 +826,9 @@ def get_option_data_for_symbols(symbols):
                     terminal_fcf = current_fcf * (1 + terminal_growth)
                     terminal_value = terminal_fcf / (discount_rate - terminal_growth)
                     terminal_pv = terminal_value / ((1 + discount_rate) ** 10)
-                    
+                
                     dcf_value = total_pv + terminal_pv
-                    
+            
                     # More lenient sanity check (Alpha Spread allows higher)
                     if dcf_value > current_price * 10:  # Allow up to 10x current price
                         dcf_value = current_price * 3  # Cap at 3x if extreme
@@ -832,7 +836,8 @@ def get_option_data_for_symbols(symbols):
             # 2. Intrinsic Value - Growth-Adjusted P/E (Alpha Spread Style)
             lynch_value = None
             ps_ratio = info.get('priceToSalesTrailing12Months')
-            revenue_growth = info.get('revenueGrowth')
+            revenue_growth = info.get('revenueGrowth') or 0
+            total_revenue = info.get('totalRevenue') or 0
             
             # For profitable companies: Use P/E based valuation
             if eps and eps > 0:
@@ -865,7 +870,6 @@ def get_option_data_for_symbols(symbols):
             
             # For pre-profit/speculative companies: Use alternative methods
             elif ps_ratio and revenue_growth:
-                total_revenue = info.get('totalRevenue')
                 if total_revenue and shares_outstanding and total_revenue > 0 and shares_outstanding > 0:
                     revenue_per_share = total_revenue / shares_outstanding
                     
@@ -918,49 +922,68 @@ def get_option_data_for_symbols(symbols):
             exp_date = datetime.strptime(target_expiration, '%Y-%m-%d').date()
             days_to_exp = (exp_date - datetime.now().date()).days
             
-            option_chain = ticker.option_chain(target_expiration)
+            retry_attempts = 0
+            while True:
+                try:
+                    option_chain = ticker.option_chain(target_expiration)
+                    break
+                except Exception as chain_error:
+                    if ("429" in str(chain_error) or "Too Many Requests" in str(chain_error)) and retry_attempts < 3:
+                        wait_time = 2 + retry_attempts
+                        print(f"⏳ Rate limited. Retrying in {wait_time}s...", end=' ', flush=True)
+                        time.sleep(wait_time)
+                        retry_attempts += 1
+                        continue
+                    raise
             calls = option_chain.calls
             puts = option_chain.puts
             
-            if len(calls) == 0 or len(puts) == 0:
+            if len(calls) == 0 and len(puts) == 0:
                 error_msg = f"No option data for expiration {target_expiration}"
                 print(f"❌ {error_msg}")
                 errors[symbol] = error_msg
                 continue
             
-            available_strikes = calls['strike'].unique()
-            atm_strike = find_atm_strike(available_strikes, current_price)
+            # Determine nearest available strikes separately for calls and puts
+            atm_call = None
+            atm_put = None
+            call_strike_price = None
+            put_strike_price = None
+            call_return_pct = None
+            put_return_pct = None
             
-            if atm_strike is None:
-                error_msg = f"Could not find ATM strike near ${current_price:.2f}"
-                print(f"❌ {error_msg}")
-                errors[symbol] = error_msg
-                continue
+            if len(calls) > 0:
+                call_diff = (calls['strike'] - current_price).abs()
+                call_idx = call_diff.idxmin()
+                atm_call = calls.loc[call_idx]
+                call_strike_price = float(atm_call['strike'])
             
-            atm_calls = calls[calls['strike'] == atm_strike]
-            atm_call = atm_calls.iloc[0] if len(atm_calls) > 0 else None
+            if len(puts) > 0:
+                put_diff = (puts['strike'] - current_price).abs()
+                put_idx = put_diff.idxmin()
+                atm_put = puts.loc[put_idx]
+                put_strike_price = float(atm_put['strike'])
             
-            atm_puts = puts[puts['strike'] == atm_strike]
-            atm_put = atm_puts.iloc[0] if len(atm_puts) > 0 else None
-            
-            # Skip if neither call nor put is available
+            # Skip if no suitable strikes found at all
             if atm_call is None and atm_put is None:
-                error_msg = f"No call or put found at strike ${atm_strike}"
+                error_msg = f"No call or put strikes available near ${current_price:.2f}"
                 print(f"❌ {error_msg}")
                 errors[symbol] = error_msg
                 continue
             
             # Add informative message if only partial strategies available
-            if atm_call is None:
-                warning_msg = f"No call option at ATM strike ${atm_strike:.2f} - Only Cash-Secured Put available"
+            if atm_call is None and atm_put is not None:
+                warning_msg = (
+                    f"No call option near ${current_price:.2f}; using put strike ${put_strike_price:.2f}"
+                )
                 print(f"⚠️  {symbol}: {warning_msg}")
-                if symbol not in errors:
-                    errors[symbol] = warning_msg
-            elif atm_put is None:
-                warning_msg = f"No put option at ATM strike ${atm_strike:.2f} - Only Covered Call available"
+                errors.setdefault(symbol, warning_msg)
+            elif atm_put is None and atm_call is not None:
+                warning_msg = (
+                    f"No put option near ${current_price:.2f}; using call strike ${call_strike_price:.2f}"
+                )
                 print(f"⚠️  {symbol}: {warning_msg}")
-                if symbol not in errors:
-                    errors[symbol] = warning_msg
+                errors.setdefault(symbol, warning_msg)
             
             # Get IV data from IBKR if connected, otherwise Yahoo Finance
             ibkr_iv_percentile, ibkr_news = get_ibkr_iv_and_news(symbol)
@@ -989,7 +1012,7 @@ def get_option_data_for_symbols(symbols):
                     call_premium_per_share = (call_bid + call_ask) / 2
                 else:
                     call_premium_per_share = call_last
-                    
+                
                 call_premium_total = call_premium_per_share * 100
                 call_capital = current_price * 100
                 call_return_pct = (call_premium_total / call_capital * 100) if call_capital > 0 else 0
@@ -999,7 +1022,7 @@ def get_option_data_for_symbols(symbols):
                     'symbol': symbol,
                     'strategy': 'Covered Call',
                     'current_price': clean_value(current_price),
-                    'strike_price': clean_value(atm_strike),
+                    'strike_price': clean_value(call_strike_price),
                     'expiration_date': target_expiration,
                     'days_to_expiration': days_to_exp,
                     'premium_per_share': clean_value(call_premium_per_share),
@@ -1013,6 +1036,10 @@ def get_option_data_for_symbols(symbols):
                     'pe_ratio': clean_value(pe_ratio),
                     'pb_ratio': clean_value(pb_ratio),
                     'peg_ratio': clean_value(peg_ratio),
+                    'ps_ratio': clean_value(ps_ratio),
+                    'market_cap': clean_value(market_cap),
+                    'dividend_yield': clean_value(dividend_yield),
+                    'ev_ebitda': clean_value(ev_ebitda),
                     'graham_intrinsic_value': clean_value(graham_number),
                     'dcf_intrinsic_value': clean_value(dcf_value),
                     'lynch_fair_value': clean_value(lynch_value),
@@ -1036,9 +1063,9 @@ def get_option_data_for_symbols(symbols):
                     put_premium_per_share = (put_bid + put_ask) / 2
                 else:
                     put_premium_per_share = put_last
-                    
+                
                 put_premium_total = put_premium_per_share * 100
-                put_capital = atm_strike * 100
+                put_capital = put_strike_price * 100
                 put_return_pct = (put_premium_total / put_capital * 100) if put_capital > 0 else 0
                 
                 # Add cash-secured put result
@@ -1046,7 +1073,7 @@ def get_option_data_for_symbols(symbols):
                     'symbol': symbol,
                     'strategy': 'Cash-Secured Put',
                     'current_price': clean_value(current_price),
-                    'strike_price': clean_value(atm_strike),
+                    'strike_price': clean_value(put_strike_price),
                     'expiration_date': target_expiration,
                     'days_to_expiration': days_to_exp,
                     'premium_per_share': clean_value(put_premium_per_share),
@@ -1060,6 +1087,10 @@ def get_option_data_for_symbols(symbols):
                     'pe_ratio': clean_value(pe_ratio),
                     'pb_ratio': clean_value(pb_ratio),
                     'peg_ratio': clean_value(peg_ratio),
+                    'ps_ratio': clean_value(ps_ratio),
+                    'market_cap': clean_value(market_cap),
+                    'dividend_yield': clean_value(dividend_yield),
+                    'ev_ebitda': clean_value(ev_ebitda),
                     'graham_intrinsic_value': clean_value(graham_number),
                     'dcf_intrinsic_value': clean_value(dcf_value),
                     'lynch_fair_value': clean_value(lynch_value),
@@ -1071,9 +1102,14 @@ def get_option_data_for_symbols(symbols):
                 })
             
             # Print summary
-            call_msg = f"Call: {call_return_pct:.2f}%" if atm_call is not None else "Call: N/A"
-            put_msg = f"Put: {put_return_pct:.2f}%" if atm_put is not None else "Put: N/A"
+            call_msg = f"Call: {call_return_pct:.2f}%" if call_return_pct is not None else "Call: N/A"
+            put_msg = f"Put: {put_return_pct:.2f}%" if put_return_pct is not None else "Put: N/A"
             print(f"✅ Success ({call_msg} | {put_msg})")
+
+            # Gentle throttle between symbols to avoid rate limiting
+            if idx < len(symbols) - 1:
+                sleep_time = 0.5 + min(len(symbols), 10) * 0.1
+                time.sleep(sleep_time)
             
         except Exception as e:
             error_msg = str(e)
@@ -1115,8 +1151,6 @@ if __name__ == "__main__":
             print("- DTE: Days To Expiration")
             print("- IV: Implied Volatility")
             print("\nINTRINSIC VALUE CALCULATIONS (in CSV):")
-            print("- Graham Intrinsic Value: Benjamin Graham's formula sqrt(22.5 × EPS × Book Value)")
-            print("  If current price < Graham value = Undervalued")
             print("- DCF Intrinsic Value: Discounted Cash Flow (5-yr projection, 10% discount rate)")
             print("  If current price < DCF value = Undervalued")
             print("- Lynch Fair Value: Peter Lynch's P/E = Growth Rate formula")

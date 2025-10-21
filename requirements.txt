@@ -9,6 +9,7 @@ yfinance>=0.2.30
 pandas>=2.0.0
 numpy>=1.24.0
 ib-insync>=0.9.70
+SQLAlchemy>=2.0.0
 
 # Configuration
 python-dotenv>=1.0.0

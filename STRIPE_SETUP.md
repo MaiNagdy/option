@@ -452,3 +452,4 @@ Your payment gateway is **fully implemented** and ready to use!
 
 *Payment processing secured by Stripe*
 
+

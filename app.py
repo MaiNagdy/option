@@ -15,6 +15,9 @@ import yfinance as yf
 import pandas as pd
 import os
 from dotenv import load_dotenv
+from sqlalchemy import create_engine, Column, String, DateTime, Text
+from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.exc import OperationalError
 
 # Load environment variables
 load_dotenv()
@@ -56,92 +59,93 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-# Simple user database (in production, use a real database)
-USER_DATA_FILE = "user_data.json"
+# Database setup
+DATABASE_URL = os.getenv("DATABASE_URL")
+engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=1800)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
 
-def load_user_data():
-    """Load user data from file"""
+class User(Base):
+    __tablename__ = "users"
+    email = Column(String(255), primary_key=True, index=True)
+    password = Column(String(255), nullable=False)
+    name = Column(String(255), nullable=False)
+    plan = Column(String(50), default="free")
+    stripe_customer_id = Column(String(255), nullable=True)
+    stripe_subscription_id = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+    token = Column(String(255), primary_key=True, index=True)
+    email = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+
+class AnalysisHistory(Base):
+    __tablename__ = "analysis_history"
+    id = Column(String(64), primary_key=True, default=lambda: secrets.token_hex(32))
+    email = Column(String(255), index=True, nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    symbols = Column(Text)
+    results_json = Column(Text)
+    errors_json = Column(Text)
+
+class AnalysisErrorLog(Base):
+    __tablename__ = "analysis_errors"
+    id = Column(String(64), primary_key=True, default=lambda: secrets.token_hex(32))
+    email = Column(String(255), index=True, nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    symbols = Column(Text)
+    error = Column(Text)
+
+
+try:
+    Base.metadata.create_all(bind=engine)
+except OperationalError as e:
+    print(f"❌ Database connection failed: {e}")
+    raise
+
+
+def get_db_session():
+    db = SessionLocal()
     try:
-        if os.path.exists(USER_DATA_FILE):
-            with open(USER_DATA_FILE, 'r') as f:
-                return json.load(f)
-    except Exception as e:
-        print(f"⚠️ Could not load user data: {e}")
-    
-    # Default demo user
-    return {
-        "demo@example.com": {
-            "password": hashlib.sha256("demo123".encode()).hexdigest(),
-            "name": "Demo User",
-            "plan": "free"
-        }
-    }
+        yield db
+    finally:
+        db.close()
 
-def save_user_data():
-    """Save user data to file"""
-    try:
-        with open(USER_DATA_FILE, 'w') as f:
-            json.dump(users_db, f, indent=2)
-        print(f"💾 User data saved to {USER_DATA_FILE}")
-    except Exception as e:
-        print(f"⚠️ Could not save user data: {e}")
-
-users_db = load_user_data()
+# Legacy JSON history storage removed (now using Postgres)
 
 # Analysis History Storage
-HISTORY_DATA_FILE = "analysis_history.json"
-
-def load_history_data():
-    """Load analysis history from file"""
-    try:
-        if os.path.exists(HISTORY_DATA_FILE):
-            with open(HISTORY_DATA_FILE, 'r') as f:
-                return json.load(f)
-        return {}
-    except Exception as e:
-        print(f"⚠️ Could not load history data: {e}")
-        return {}
-
-def save_history_data(history_db):
-    """Save history data to file"""
-    try:
-        with open(HISTORY_DATA_FILE, 'w') as f:
-            json.dump(history_db, f, indent=2)
-    except Exception as e:
-        print(f"⚠️ Could not save history data: {e}")
-
 def save_analysis_to_history(email, symbols, results, errors):
-    """Save analysis results to user's history"""
     try:
-        history_db = load_history_data()
-        
-        if email not in history_db:
-            history_db[email] = []
-        
-        # Create history entry
-        history_entry = {
-            "timestamp": datetime.now().isoformat(),
-            "symbols": symbols,
-            "results_count": len(results),
-            "errors_count": len(errors),
-            "results": results,
-            "errors": errors
-        }
-        
-        # Add to beginning of list (most recent first)
-        history_db[email].insert(0, history_entry)
-        
-        # Keep only last 100 analyses per user
-        history_db[email] = history_db[email][:100]
-        
-        save_history_data(history_db)
-        print(f"📊 Saved analysis to history for {email}")
+        with SessionLocal() as db:
+            entry = AnalysisHistory(
+                email=email,
+                symbols=','.join(symbols),
+                results_json=json.dumps(results),
+                errors_json=json.dumps(errors)
+            )
+            db.add(entry)
+            db.commit()
+
+            # Keep only last 100 entries
+            subquery = (
+                db.query(AnalysisHistory.id)
+                .filter(AnalysisHistory.email == email)
+                .order_by(AnalysisHistory.timestamp.desc())
+                .offset(100)
+            )
+            stale_ids = [row[0] for row in subquery.all()]
+            if stale_ids:
+                db.query(AnalysisHistory).filter(AnalysisHistory.id.in_(stale_ids)).delete(synchronize_session=False)
+                db.commit()
+            print(f"📊 Saved analysis to history for {email}")
     except Exception as e:
         print(f"⚠️ Could not save to history: {e}")
 
 # Password Reset Storage
-RESET_DATA_FILE = "password_resets.json"
-
 def load_reset_data():
     """Load password reset tokens from file"""
     try:
@@ -162,46 +166,62 @@ def save_reset_data(reset_db):
         print(f"⚠️ Could not save reset data: {e}")
 
 def create_reset_token(email: str) -> str:
-    """Create a password reset token for an email"""
-    reset_db = load_reset_data()
     token = secrets.token_urlsafe(32)
-    reset_db[token] = {
-        "email": email,
-        "created": datetime.now().isoformat(),
-        "expires": (datetime.now() + timedelta(hours=1)).isoformat()
-    }
-    save_reset_data(reset_db)
+    expires_at = datetime.utcnow() + timedelta(hours=1)
+    with SessionLocal() as db:
+        db.query(PasswordResetToken).filter(PasswordResetToken.email == email).delete()
+        reset_entry = PasswordResetToken(token=token, email=email, expires_at=expires_at)
+        db.add(reset_entry)
+        db.commit()
     return token
 
+
 def validate_reset_token(token: str) -> Optional[str]:
-    """Validate a reset token and return the email if valid"""
-    reset_db = load_reset_data()
-    if token not in reset_db:
-        return None
-    
-    reset_data = reset_db[token]
-    expires = datetime.fromisoformat(reset_data["expires"])
-    
-    if datetime.now() > expires:
-        # Token expired, remove it
-        del reset_db[token]
-        save_reset_data(reset_db)
-        return None
-    
-    return reset_data["email"]
+    with SessionLocal() as db:
+        entry = db.get(PasswordResetToken, token)
+        if not entry:
+            return None
+        if datetime.utcnow() > entry.expires_at:
+            db.delete(entry)
+            db.commit()
+            return None
+        return entry.email
+
 
 def delete_reset_token(token: str):
-    """Delete a reset token after use"""
-    reset_db = load_reset_data()
-    if token in reset_db:
-        del reset_db[token]
-        save_reset_data(reset_db)
+    with SessionLocal() as db:
+        db.query(PasswordResetToken).filter(PasswordResetToken.token == token).delete()
+        db.commit()
 
 # Session storage (in production, use Redis or similar)
 sessions = {}
 
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
+
+
+def get_user(email: str):
+    with SessionLocal() as db:
+        return db.get(User, email)
+
+
+def create_user(email: str, name: str, password: str):
+    with SessionLocal() as db:
+        user = User(email=email, name=name, password=hash_password(password), plan="free")
+        db.add(user)
+        db.commit()
+
+
+def update_user(email: str, **fields):
+    with SessionLocal() as db:
+        user = db.get(User, email)
+        if not user:
+            return
+        for key, value in fields.items():
+            setattr(user, key, value)
+        user.updated_at = datetime.utcnow()
+        db.commit()
+
 
 def create_session(email: str) -> str:
     session_id = secrets.token_urlsafe(32)
@@ -212,21 +232,23 @@ def create_session(email: str) -> str:
     }
     return session_id
 
+
 def get_current_user(request: Request) -> Optional[dict]:
     session_id = request.cookies.get("session_id")
     if not session_id or session_id not in sessions:
         return None
-    
+
     session = sessions[session_id]
     if datetime.now() > session["expires"]:
         del sessions[session_id]
         return None
-    
+
     email = session["email"]
-    if email not in users_db:
+    user = get_user(email)
+    if not user:
         return None
-    
-    return {"email": email, **users_db[email]}
+
+    return {"email": user.email, "name": user.name, "plan": user.plan}
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -251,18 +273,13 @@ async def login(
     password: str = Form(...)
 ):
     """Handle login"""
-    if email not in users_db:
+    user = get_user(email)
+    if not user or user.password != hash_password(password):
         return templates.TemplateResponse(
             "login.html",
             {"request": request, "error": "Invalid email or password"}
         )
-    
-    if users_db[email]["password"] != hash_password(password):
-        return templates.TemplateResponse(
-            "login.html",
-            {"request": request, "error": "Invalid email or password"}
-        )
-    
+
     session_id = create_session(email)
     response = RedirectResponse("/dashboard", status_code=303)
     response.set_cookie("session_id", session_id, httponly=True, max_age=604800)
@@ -285,19 +302,15 @@ async def signup(
     password: str = Form(...)
 ):
     """Handle signup"""
-    if email in users_db:
+    user = get_user(email)
+    if user:
         return templates.TemplateResponse(
             "signup.html",
             {"request": request, "error": "Email already registered"}
         )
-    
-    users_db[email] = {
-        "password": hash_password(password),
-        "name": name,
-        "plan": "free"
-    }
-    save_user_data()
-    
+
+    create_user(email=email, name=name, password=password)
+
     session_id = create_session(email)
     response = RedirectResponse("/dashboard", status_code=303)
     response.set_cookie("session_id", session_id, httponly=True, max_age=604800)
@@ -328,13 +341,13 @@ async def forgot_password(
     email: str = Form(...)
 ):
     """Handle forgot password request"""
-    if email not in users_db:
+    user = get_user(email)
+    if not user:
         return templates.TemplateResponse(
             "forgot_password.html",
             {"request": request, "error": "Email not found in our system"}
         )
-    
-    # Create reset token
+
     token = create_reset_token(email)
     
     # In production, send email with reset link
@@ -378,27 +391,22 @@ async def reset_password(
             "reset_password.html",
             {"request": request, "token": token, "error": "Invalid or expired reset link"}
         )
-    
+
     if password != confirm_password:
         return templates.TemplateResponse(
             "reset_password.html",
             {"request": request, "token": token, "error": "Passwords do not match"}
         )
-    
+
     if len(password) < 6:
         return templates.TemplateResponse(
             "reset_password.html",
             {"request": request, "token": token, "error": "Password must be at least 6 characters"}
         )
-    
-    # Update password
-    users_db[email]["password"] = hash_password(password)
-    save_user_data()
-    
-    # Delete the reset token
+
+    update_user(email, password=hash_password(password))
     delete_reset_token(token)
-    
-    # Create session and log user in
+
     session_id = create_session(email)
     response = RedirectResponse("/dashboard", status_code=303)
     response.set_cookie("session_id", session_id, httponly=True, max_age=604800)
@@ -438,18 +446,30 @@ async def profile(request: Request):
 
 @app.get("/api/history")
 async def get_history(request: Request):
-    """Get user's analysis history"""
     user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    
+
     try:
-        history_db = load_history_data()
-        user_history = history_db.get(user["email"], [])
-        
-        return JSONResponse(content={
-            "history": user_history
-        })
+        with SessionLocal() as db:
+            entries = (
+                db.query(AnalysisHistory)
+                .filter(AnalysisHistory.email == user["email"])
+                .order_by(AnalysisHistory.timestamp.desc())
+                .all()
+            )
+            history = [
+                {
+                    "timestamp": entry.timestamp.isoformat(),
+                    "symbols": entry.symbols.split(',') if entry.symbols else [],
+                    "results": json.loads(entry.results_json or "[]"),
+                    "errors": json.loads(entry.errors_json or "{}"),
+                    "results_count": len(json.loads(entry.results_json or "[]")),
+                    "errors_count": len(json.loads(entry.errors_json or "{}"))
+                }
+                for entry in entries
+            ]
+        return JSONResponse(content={"history": history})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -512,18 +532,9 @@ async def subscribe(request: Request):
         data = await request.json()
         email = user["email"]
         
-        # Check if this is test mode or real Stripe
         if data.get("testMode"):
-            # Test mode - simple upgrade
             plan = data.get("plan", "pro")
-            
-            if email in users_db:
-                users_db[email]["plan"] = plan
-                # Also save to a persistent file for production use
-                save_user_data()
-                print(f"✅ Test mode: Upgraded {email} to {plan} plan")
-                print(f"📝 Current plan for {email}: {users_db[email]['plan']}")
-            
+            update_user(email, plan=plan)
             return JSONResponse(content={
                 "success": True,
                 "message": "Subscription successful (test mode)",
@@ -565,13 +576,7 @@ async def subscribe(request: Request):
                 )
                 
                 # Update user plan
-                if email in users_db:
-                    users_db[email]["plan"] = plan
-                    users_db[email]["stripe_customer_id"] = customer.id
-                    users_db[email]["stripe_subscription_id"] = subscription.id
-                    save_user_data()
-                
-                print(f"✅ Real Stripe: Created subscription for {email}")
+                update_user(email, plan=plan, stripe_customer_id=customer.id, stripe_subscription_id=subscription.id)
                 
                 # Check if payment requires additional action (3D Secure)
                 if subscription.latest_invoice.payment_intent.status == "requires_action":
@@ -592,9 +597,7 @@ async def subscribe(request: Request):
             except ImportError:
                 # Stripe library not installed, fall back to test mode
                 print("⚠️ Stripe library not installed, using test mode")
-                if email in users_db:
-                    users_db[email]["plan"] = data.get("plan", "pro")
-                    save_user_data()
+                update_user(email, plan=data.get("plan", "pro"))
                 return JSONResponse(content={
                     "success": True,
                     "message": "Subscription successful (Stripe not configured)",
@@ -606,9 +609,7 @@ async def subscribe(request: Request):
         else:
             # No Stripe configured, use test mode
             plan = data.get("plan", "pro")
-            if email in users_db:
-                users_db[email]["plan"] = plan
-                save_user_data()
+            update_user(email, plan=plan)
             
             return JSONResponse(content={
                 "success": True,
@@ -640,12 +641,7 @@ async def update_profile(request: Request):
         if not name:
             raise HTTPException(status_code=400, detail="Name is required")
         
-        # Update user data
-        if email in users_db:
-            users_db[email]["name"] = name
-            save_user_data()
-            print(f"✅ Updated profile for {email}: {name}")
-        
+        update_user(email, name=name)
         return JSONResponse(content={
             "success": True,
             "message": "Profile updated successfully"
@@ -664,23 +660,21 @@ async def cancel_subscription(request: Request):
     user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    
+
     email = user["email"]
-    
+
     try:
-        # Check if user has Stripe subscription
         stripe_secret_key = os.getenv("STRIPE_SECRET_KEY")
-        
+
         if stripe_secret_key and stripe_secret_key != "not_configured":
-            user_data = users_db.get(email, {})
-            subscription_id = user_data.get("stripe_subscription_id")
-            
+            user_record = get_user(email)
+            subscription_id = user_record.stripe_subscription_id if user_record else None
+
             if subscription_id:
                 try:
                     import stripe
                     stripe.api_key = stripe_secret_key
-                    
-                    # Cancel the subscription at period end
+
                     stripe.Subscription.modify(
                         subscription_id,
                         cancel_at_period_end=True
@@ -688,18 +682,13 @@ async def cancel_subscription(request: Request):
                     print(f"✅ Cancelled Stripe subscription for {email}")
                 except Exception as e:
                     print(f"⚠️ Stripe cancellation error: {str(e)}")
-        
-        # Downgrade user to free plan
-        if email in users_db:
-            users_db[email]["plan"] = "free"
-            save_user_data()
-            print(f"✅ Downgraded {email} to free plan")
-        
+
+        update_user(email, plan="free")
         return JSONResponse(content={
             "success": True,
             "message": "Subscription cancelled. You will retain access until the end of your billing period."
         })
-        
+
     except Exception as e:
         print(f"❌ Cancel subscription error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
