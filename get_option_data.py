@@ -309,12 +309,6 @@ def get_option_data():
             revenue_growth = info.get('revenueGrowth') or 0
             total_revenue = info.get('totalRevenue') or 0
             
-            # Calculate INTRINSIC VALUE #1: Graham Number (Benjamin Graham's Formula)
-            # Formula: sqrt(22.5 × EPS × Book Value per Share)
-            graham_number = None
-            if eps and book_value and eps > 0 and book_value > 0:
-                graham_number = (22.5 * eps * book_value) ** 0.5
-            
             # Calculate INTRINSIC VALUE #2: DCF Value (Alpha Spread Methodology)
             # Conservative DCF using Free Cash Flow
             dcf_value = None
@@ -560,7 +554,6 @@ def get_option_data():
                     'market_cap': market_cap,
                     'dividend_yield': dividend_yield,
                     'ev_ebitda': ev_ebitda,
-                    'graham_intrinsic_value': graham_number,
                     'dcf_intrinsic_value': dcf_value,
                     'lynch_fair_value': lynch_value,
                     'analyst_target': analyst_target,
@@ -611,7 +604,6 @@ def get_option_data():
                     'market_cap': market_cap,
                     'dividend_yield': dividend_yield,
                     'ev_ebitda': ev_ebitda,
-                    'graham_intrinsic_value': graham_number,
                     'dcf_intrinsic_value': dcf_value,
                     'lynch_fair_value': lynch_value,
                     'analyst_target': analyst_target,
@@ -772,11 +764,7 @@ def get_option_data_for_symbols(symbols):
             shares_outstanding = info.get('sharesOutstanding')
             earnings_growth = info.get('earningsGrowth') or info.get('earningsQuarterlyGrowth')
             revenue_growth = info.get('revenueGrowth') or 0
-
-            # Calculate Graham Number (Benjamin Graham's Formula)
-            graham_number = None
-            if eps and book_value and eps > 0 and book_value > 0:
-                graham_number = (22.5 * eps * book_value) ** 0.5
+            total_revenue = info.get('totalRevenue') or 0
 
             # === INTRINSIC VALUE CALCULATIONS (Alpha Spread methodology) ===
             
@@ -835,9 +823,6 @@ def get_option_data_for_symbols(symbols):
             
             # 2. Intrinsic Value - Growth-Adjusted P/E (Alpha Spread Style)
             lynch_value = None
-            ps_ratio = info.get('priceToSalesTrailing12Months')
-            revenue_growth = info.get('revenueGrowth') or 0
-            total_revenue = info.get('totalRevenue') or 0
             
             # For profitable companies: Use P/E based valuation
             if eps and eps > 0:
@@ -1040,7 +1025,6 @@ def get_option_data_for_symbols(symbols):
                     'market_cap': clean_value(market_cap),
                     'dividend_yield': clean_value(dividend_yield),
                     'ev_ebitda': clean_value(ev_ebitda),
-                    'graham_intrinsic_value': clean_value(graham_number),
                     'dcf_intrinsic_value': clean_value(dcf_value),
                     'lynch_fair_value': clean_value(lynch_value),
                     'analyst_target': clean_value(analyst_target),
@@ -1091,7 +1075,6 @@ def get_option_data_for_symbols(symbols):
                     'market_cap': clean_value(market_cap),
                     'dividend_yield': clean_value(dividend_yield),
                     'ev_ebitda': clean_value(ev_ebitda),
-                    'graham_intrinsic_value': clean_value(graham_number),
                     'dcf_intrinsic_value': clean_value(dcf_value),
                     'lynch_fair_value': clean_value(lynch_value),
                     'analyst_target': clean_value(analyst_target),
