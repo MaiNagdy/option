@@ -374,19 +374,29 @@ def get_option_data():
             # Alpha Spread uses a weighted blend of multiple methods, with fallbacks for speculative stocks
             lynch_value = None
             pe_value = None
+            forward_eps = info.get('forwardEps')
+            forward_pe = info.get('forwardPE')
             
             # Try earnings-based valuation first
-            if eps and eps > 0:
-                # Method 1: Earnings-based valuation (Conservative P/E)
-                if earnings_growth and earnings_growth > 0:
-                    # Use PEG ratio approach but conservative
-                    growth_pct = earnings_growth * 100
-                    # Conservative P/E: growth% but capped
-                    fair_pe = min(growth_pct, 25)  # Cap at 25 P/E
+            if forward_eps and forward_eps > 0:
+                # Method 1: Use Forward EPS with conservative P/E (like Alpha Spread)
+                if forward_pe and forward_pe > 0:
+                    # Use 60% of forward P/E as fair value target
+                    fair_pe = forward_pe * 0.60
+                    pe_value = forward_eps * fair_pe
+                else:
+                    # Default to P/E of 20 for forward EPS
+                    pe_value = forward_eps * 20
+            elif eps and eps > 0:
+                # Fallback to trailing EPS
+                if forward_pe and forward_pe > 0:
+                    fair_pe = forward_pe * 1.05
+                    pe_value = eps * fair_pe
+                elif pe_ratio and pe_ratio > 0:
+                    fair_pe = min(pe_ratio * 1.05, 45)
                     pe_value = eps * fair_pe
                 else:
-                    # Use conservative P/E of 12 for no-growth stocks
-                    pe_value = eps * 12
+                    pe_value = eps * 20
             
             # FALLBACK for speculative/pre-profit stocks (like BITF, NNE, ASTS)
             # Use Price-to-Sales ratio when earnings are negative/unavailable
@@ -823,33 +833,30 @@ def get_option_data_for_symbols(symbols):
             
             # 2. Intrinsic Value - Growth-Adjusted P/E (Alpha Spread Style)
             lynch_value = None
+            forward_eps = info.get('forwardEps')
+            forward_pe = info.get('forwardPE')
             
             # For profitable companies: Use P/E based valuation
-            if eps and eps > 0:
-                # Alpha Spread style: More generous P/E for growth stocks
-                if earnings_growth and earnings_growth > 0:
-                    # Fair P/E can be much higher for high-growth companies
-                    growth_pct = earnings_growth * 100
-                    
-                    # Alpha Spread allows higher multiples:
-                    # - High growth (>40%): P/E up to 70
-                    # - Medium growth (20-40%): P/E up to 50
-                    # - Low growth (<20%): P/E up to 35
-                    if growth_pct > 40:
-                        fair_pe = min(growth_pct * 1.5, 70)  # Growth stocks get 1.5x multiplier
-                    elif growth_pct > 20:
-                        fair_pe = min(growth_pct * 1.3, 50)
-                    else:
-                        fair_pe = min(max(growth_pct, 12), 35)
-                    
+            if forward_eps and forward_eps > 0:
+                # Alpha Spread uses Forward EPS with a conservative P/E multiple
+                # Target P/E ranges from 15-30 depending on growth and stability
+                if forward_pe and forward_pe > 0:
+                    # Use 60% of forward P/E as fair value target
+                    fair_pe = forward_pe * 0.60
+                    lynch_value = forward_eps * fair_pe
+                else:
+                    # Default to P/E of 20 for forward EPS
+                    lynch_value = forward_eps * 20
+            elif eps and eps > 0:
+                # Fallback to trailing EPS if forward not available
+                if forward_pe and forward_pe > 0:
+                    fair_pe = forward_pe * 1.05
                     lynch_value = eps * fair_pe
                 elif pe_ratio and pe_ratio > 0:
-                    # Use current P/E with minimal discount
-                    fair_pe = min(pe_ratio * 0.95, 40)  # 95% of current, max 40
+                    fair_pe = min(pe_ratio * 1.05, 45)
                     lynch_value = eps * fair_pe
                 else:
-                    # Default P/E for stable companies
-                    lynch_value = eps * 18
+                    lynch_value = eps * 20
                 
                 # NO Graham blending - Alpha Spread doesn't do this
             
