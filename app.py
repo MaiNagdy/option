@@ -100,6 +100,13 @@ class AnalysisErrorLog(Base):
     symbols = Column(Text)
     error = Column(Text)
 
+class Session(Base):
+    __tablename__ = "sessions"
+    session_id = Column(String(255), primary_key=True, index=True)
+    email = Column(String(255), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+
 
 try:
     Base.metadata.create_all(bind=engine)
@@ -193,9 +200,6 @@ def delete_reset_token(token: str):
         db.query(PasswordResetToken).filter(PasswordResetToken.token == token).delete()
         db.commit()
 
-# Session storage (in production, use Redis or similar)
-sessions = {}
-
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
@@ -224,31 +228,79 @@ def update_user(email: str, **fields):
 
 
 def create_session(email: str) -> str:
+    """Create a new session in the database"""
     session_id = secrets.token_urlsafe(32)
-    sessions[session_id] = {
-        "email": email,
-        "created": datetime.now(),
-        "expires": datetime.now() + timedelta(days=7)
-    }
+    expires_at = datetime.utcnow() + timedelta(days=7)
+    
+    with SessionLocal() as db:
+        # Delete any existing sessions for this email (optional - allows only one active session per user)
+        # db.query(Session).filter(Session.email == email).delete()
+        
+        # Create new session
+        session = Session(
+            session_id=session_id,
+            email=email,
+            expires_at=expires_at
+        )
+        db.add(session)
+        db.commit()
+    
     return session_id
 
 
 def get_current_user(request: Request) -> Optional[dict]:
+    """Get current user from session stored in database"""
     session_id = request.cookies.get("session_id")
-    if not session_id or session_id not in sessions:
+    if not session_id:
         return None
 
-    session = sessions[session_id]
-    if datetime.now() > session["expires"]:
-        del sessions[session_id]
-        return None
+    with SessionLocal() as db:
+        # Get session from database
+        session = db.get(Session, session_id)
+        if not session:
+            return None
 
-    email = session["email"]
-    user = get_user(email)
-    if not user:
-        return None
+        # Check if session expired
+        if datetime.utcnow() > session.expires_at:
+            db.delete(session)
+            db.commit()
+            return None
 
-    return {"email": user.email, "name": user.name, "plan": user.plan}
+        # Get user
+        user = db.get(User, session.email)
+        if not user:
+            return None
+
+        return {"email": user.email, "name": user.name, "plan": user.plan}
+
+
+def delete_session(session_id: str):
+    """Delete a session from the database"""
+    with SessionLocal() as db:
+        session = db.get(Session, session_id)
+        if session:
+            db.delete(session)
+            db.commit()
+
+
+def cleanup_expired_sessions():
+    """Remove expired sessions from the database"""
+    try:
+        with SessionLocal() as db:
+            expired_count = db.query(Session).filter(
+                Session.expires_at < datetime.utcnow()
+            ).delete()
+            db.commit()
+            if expired_count > 0:
+                print(f"🧹 Cleaned up {expired_count} expired session(s)")
+    except Exception as e:
+        print(f"⚠️ Error cleaning up sessions: {e}")
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Run cleanup on startup"""
+    cleanup_expired_sessions()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -321,8 +373,8 @@ async def signup(
 async def logout(request: Request):
     """Logout user"""
     session_id = request.cookies.get("session_id")
-    if session_id in sessions:
-        del sessions[session_id]
+    if session_id:
+        delete_session(session_id)
     
     response = RedirectResponse("/")
     response.delete_cookie("session_id")
