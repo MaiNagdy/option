@@ -738,13 +738,9 @@ def get_option_data_for_symbols(symbols):
     print("=" * 80)
     
     for idx, symbol in enumerate(symbols):
-        retry_count = 0
-        max_retries = 3
-        
-        while retry_count < max_retries:
-            try:
-                print(f"🔍 Analyzing {symbol}...", end=' ', flush=True)
-                ticker = yf.Ticker(symbol)
+        try:
+            print(f"🔍 Analyzing {symbol}...", end=' ', flush=True)
+            ticker = yf.Ticker(symbol)
             
             # Get current stock price and valuation metrics
             info = ticker.info
@@ -1100,38 +1096,20 @@ def get_option_data_for_symbols(symbols):
             put_msg = f"Put: {put_return_pct:.2f}%" if put_return_pct is not None else "Put: N/A"
             print(f"✅ Success ({call_msg} | {put_msg})")
 
-                # Aggressive throttle between symbols to avoid rate limiting
-                if idx < len(symbols) - 1:
-                    # Increase delay based on number of symbols
-                    # More symbols = longer delays to avoid Yahoo Finance rate limits
-                    sleep_time = 2.0 + min(len(symbols), 10) * 0.2
-                    time.sleep(sleep_time)
-                
-                # Success - break out of retry loop
-                break
-                
-            except Exception as e:
-                error_msg = str(e)
-                
-                # Check if it's a rate limit error
-                if "Too Many Requests" in error_msg or "429" in error_msg or "Rate limit" in error_msg:
-                    retry_count += 1
-                    if retry_count < max_retries:
-                        wait_time = 10 * retry_count  # 10, 20, 30 seconds
-                        print(f"⏳ Rate limited. Waiting {wait_time}s before retry {retry_count}/{max_retries}...")
-                        time.sleep(wait_time)
-                        continue
-                    else:
-                        print(f"❌ Rate limit exceeded after {max_retries} retries")
-                        errors[symbol] = "Too Many Requests. Rate limited. Try after a while."
-                        break
-                else:
-                    # Other error - don't retry
-                    print(f"❌ Error: {error_msg}")
-                    errors[symbol] = f"Analysis error: {error_msg}"
-                    import traceback
-                    traceback.print_exc()
-                    break
+            # Aggressive throttle between symbols to avoid rate limiting
+            if idx < len(symbols) - 1:
+                # Increase delay based on number of symbols
+                # More symbols = longer delays to avoid Yahoo Finance rate limits
+                sleep_time = 2.0 + min(len(symbols), 10) * 0.2
+                time.sleep(sleep_time)
+            
+        except Exception as e:
+            error_msg = str(e)
+            print(f"❌ Error: {error_msg}")
+            errors[symbol] = f"Analysis error: {error_msg}"
+            import traceback
+            traceback.print_exc()
+            continue
     
     # Print summary
     print("=" * 80)
