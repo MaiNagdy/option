@@ -60,7 +60,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 # Database setup
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./option_trading.db")
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=1800)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -151,26 +151,6 @@ def save_analysis_to_history(email, symbols, results, errors):
             print(f"📊 Saved analysis to history for {email}")
     except Exception as e:
         print(f"⚠️ Could not save to history: {e}")
-
-# Password Reset Storage
-def load_reset_data():
-    """Load password reset tokens from file"""
-    try:
-        if os.path.exists(RESET_DATA_FILE):
-            with open(RESET_DATA_FILE, 'r') as f:
-                return json.load(f)
-        return {}
-    except Exception as e:
-        print(f"⚠️ Could not load reset data: {e}")
-        return {}
-
-def save_reset_data(reset_db):
-    """Save password reset tokens to file"""
-    try:
-        with open(RESET_DATA_FILE, 'w') as f:
-            json.dump(reset_db, f, indent=2)
-    except Exception as e:
-        print(f"⚠️ Could not save reset data: {e}")
 
 def create_reset_token(email: str) -> str:
     token = secrets.token_urlsafe(32)
