@@ -838,11 +838,11 @@ def get_option_data_for_symbols(symbols):
             
             # For profitable companies: Use P/E based valuation
             if forward_eps and forward_eps > 0:
-                # Alpha Spread uses Forward EPS with a conservative P/E multiple
+                # Alpha Spread uses Forward EPS with realistic P/E multiple
                 # Target P/E ranges from 15-30 depending on growth and stability
                 if forward_pe and forward_pe > 0:
-                    # Use 60% of forward P/E as fair value target
-                    fair_pe = forward_pe * 0.60
+                    # Use 85% of forward P/E as fair value target (more realistic)
+                    fair_pe = forward_pe * 0.85
                     lynch_value = forward_eps * fair_pe
                 else:
                     # Default to P/E of 20 for forward EPS
@@ -890,11 +890,25 @@ def get_option_data_for_symbols(symbols):
                     # Use 90% of analyst target as proxy
                     lynch_value = analyst_target * 0.90
             
-            # 3. Relative Value - Use intrinsic value (not conservative blend)
+            # 3. Relative Value - Blend DCF and P/E based intrinsic value
             relative_value_pct = None
-            if lynch_value and lynch_value > 0:
-                # Alpha Spread uses intrinsic value directly
-                relative_value_pct = ((current_price - lynch_value) / lynch_value) * 100
+            intrinsic_value = None
+            
+            # Use weighted average of available valuation methods
+            if dcf_value and lynch_value:
+                # Blend 40% DCF + 60% P/E based (P/E more reliable for most stocks)
+                intrinsic_value = (dcf_value * 0.4) + (lynch_value * 0.6)
+            elif lynch_value:
+                intrinsic_value = lynch_value
+            elif dcf_value:
+                intrinsic_value = dcf_value
+            elif analyst_target:
+                intrinsic_value = analyst_target
+            
+            # Calculate relative value (% over/undervalued)
+            if intrinsic_value and intrinsic_value > 0:
+                # Use current price as denominator (industry standard)
+                relative_value_pct = ((current_price - intrinsic_value) / current_price) * 100
             
             # Get options
             expirations = ticker.options
@@ -1034,6 +1048,7 @@ def get_option_data_for_symbols(symbols):
                     'ev_ebitda': clean_value(ev_ebitda),
                     'dcf_intrinsic_value': clean_value(dcf_value),
                     'lynch_fair_value': clean_value(lynch_value),
+                    'intrinsic_value': clean_value(intrinsic_value),
                     'analyst_target': clean_value(analyst_target),
                     'analyst_low': clean_value(analyst_low),
                     'analyst_high': clean_value(analyst_high),
@@ -1084,6 +1099,7 @@ def get_option_data_for_symbols(symbols):
                     'ev_ebitda': clean_value(ev_ebitda),
                     'dcf_intrinsic_value': clean_value(dcf_value),
                     'lynch_fair_value': clean_value(lynch_value),
+                    'intrinsic_value': clean_value(intrinsic_value),
                     'analyst_target': clean_value(analyst_target),
                     'analyst_low': clean_value(analyst_low),
                     'analyst_high': clean_value(analyst_high),
